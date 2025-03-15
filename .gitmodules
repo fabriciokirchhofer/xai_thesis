@@ -1,0 +1,3 @@
+[submodule "external/cheXlocalize"]
+	path = external/cheXlocalize
+	url = https://github.com/rajpurkarlab/cheXlocalize.git
