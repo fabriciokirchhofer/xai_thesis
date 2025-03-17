@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 COPY . /workspace
 
 # 5. Clone external repositories (e.g., CheXlocalize)
-RUN git submodule update --init --recursive /third_party/cheXlocalize
+RUN git submodule update --init --recursive third_party/cheXlocalize
 
 # 6. Install Python dependencies
 RUN pip install --upgrade pip
