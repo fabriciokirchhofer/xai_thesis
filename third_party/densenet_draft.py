@@ -104,7 +104,7 @@ test_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0'
 basic_transform = transforms.Compose([
     transforms.Resize((320, 320))
 ])
-batch_size = 1
+batch_size = 16
 
 # Create dataset
 dataset = CustomImageDataset(
