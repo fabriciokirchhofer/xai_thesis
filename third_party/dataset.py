@@ -39,7 +39,7 @@ class BasicImageDataset(Dataset):
         return image.size()
 
 
-def get_dataloader(annotations_file, img_dir, transform, batch_size=64, shuffle=False):
+def get_dataloader(annotations_file, img_dir, transform, batch_size=1, shuffle=False, test=False):
     """
     Factory function to create a DataLoader for the CustomImageDataset.
     Args:
@@ -48,6 +48,7 @@ def get_dataloader(annotations_file, img_dir, transform, batch_size=64, shuffle=
         transform (callable, optional): transformations by default False 
         batch_size (int): by default 64
         shuffle (bool): by default False
+        test (bool): In test mode the csv file with the lables with skip the first 5 columns. By default False
 
     Returns:
         DataLoader: Iterable instance of BasicImageDataset
@@ -57,9 +58,9 @@ def get_dataloader(annotations_file, img_dir, transform, batch_size=64, shuffle=
     elif batch_size == 16:
         num_workers = 4
     else:
-        num_workers = 1
+        num_workers = 0
 
-    dataset = BasicImageDataset(annotations_file, img_dir, transform=transform)
+    dataset = BasicImageDataset(annotations_file, img_dir, transform=transform, test=test)
     return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
 def compute_dataset_statistics(data_loader):
