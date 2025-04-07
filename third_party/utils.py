@@ -3,10 +3,12 @@ from sklearn.metrics import f1_score, auc, roc_curve
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 
 #******************** Utils ********************
+#******************** preprocessing ********************
 def remove_prefix(dict, prefix):
     """
     Function to remove additional prefix created while saving the model
@@ -22,6 +24,61 @@ def remove_prefix(dict, prefix):
     return new_state_dict
 
 
+# def extract_study_id(mode):
+#     """
+#     Args:
+#         mode (str): either 'val' or 'test'. 
+#         It will then go either to the validation or test csv file
+#         and extract from there the study id.
+
+#     Return: DataFrame with the study id
+
+#     """
+#     if mode == 'val':
+#         df = pd.read_csv('/home/fkirchhofer/data/CheXpert-v1.0/valid.csv')
+#         parts = df.split('/')
+#         agg =  '/'.join(parts[:3])
+#         df['study_id'] = df.iloc[:,0].apply(agg)
+#         return df
+    
+#     elif mode == 'test':
+#         df = pd.read_csv('/home/fkirchhofer/data/CheXpert-v1.0/test.csv')
+#         parts = df.split('/')
+#         agg =  '/'.join(parts[:3])
+#         df['study_id'] = df.iloc[:,0].apply(agg)
+#         return df
+#     else:
+#         raise ValueError(f"Expected either 'val' or 'test' tasks, but got sth else.")
+
+
+
+def extract_study_id(mode):
+    """
+    Args:
+        mode (bool): either False goes to 'val' and True goes to 'test'. 
+            It will then read the corresponding CSV file and extract the study ID
+            from the image file paths (assuming the study ID is encoded in the first
+            three parts of the file path, separated by '/').
+    Returns:
+        DataFrame: The CSV DataFrame with an added 'study_id' column.
+    """
+    if mode == False:
+        df = pd.read_csv('/home/fkirchhofer/data/CheXpert-v1.0/valid.csv')
+        # Apply lambda to the first column to extract the study id.
+        df['study_id'] = df.iloc[:, 0].apply(lambda x: '/'.join(x.split('/')[:3]))
+        return df
+
+    elif mode:
+        df = pd.read_csv('/home/fkirchhofer/data/CheXpert-v1.0/test.csv')
+        df['study_id'] = df.iloc[:, 0].apply(lambda x: '/'.join(x.split('/')[:3]))
+        return df
+
+    else:
+        raise ValueError("Expected either 'val' or 'test' mode, but got something else.")
+
+#******************** Evaluation ********************
+
+
 def compute_accuracy(predictions, labels):
     """
     Computes overall binary accuracy across all tasks.
@@ -30,6 +87,32 @@ def compute_accuracy(predictions, labels):
     total = labels.numel()
     accuracy = correct / total
     return accuracy.item()
+
+
+def comput_youden_idx(ground_truth, preds, tasks):
+    youden_idx = {}
+    for i, task in enumerate(tasks):
+        pred = preds[:, i]
+        # Compute confusion matrix components
+        tp = ((ground_truth[:, i] == 1) & (pred == 1)).sum()
+        fn = ((ground_truth[:, i] == 1) & (pred == 0)).sum()
+        tn = ((ground_truth[:, i] == 0) & (pred == 0)).sum()
+        fp = ((ground_truth[:, i] == 0) & (pred == 1)).sum()
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+        score = sensitivity + specificity - 1
+        youden_idx[task] = score
+    return youden_idx
+
+
+def compute_f1_score(ground_truth, preds, tasks):
+    f1_scores = {}
+    for i, task in enumerate(tasks):
+        pred = preds[:, i]
+        score = f1_score(ground_truth[:, i], pred, zero_division=0.0)
+        f1_scores[task] = score
+    return f1_scores
+
 
 def auroc(predictions, ground_truth, tasks, n_classes=14):
     """
@@ -49,7 +132,7 @@ def auroc(predictions, ground_truth, tasks, n_classes=14):
         predictions = predictions.detach().cpu().numpy()
     elif not isinstance(predictions, np.ndarray):       
         predictions = np.ndarray(predictions)
-        predictions = np.array(predictions).np.reshape(-1,n_classes)
+        predictions = np.array(predictions).reshape(-1,n_classes)
 
     # Check format of gt labels
     if torch.is_tensor(ground_truth):
@@ -75,7 +158,6 @@ def auroc(predictions, ground_truth, tasks, n_classes=14):
             auc_results[task] = metrics.roc_auc_score(y_true=gt, y_score=pred)
 
     return auc_results
-
 
 
 def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metric="f1"):
@@ -124,6 +206,7 @@ def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metri
         metric_score_dict[task] = best_metric_score
     return optimal_thresholds, metric_score_dict
 
+
 def threshold_based_predictions(probs, thresholds, tasks):
     """
     Applies task-specific thresholds to probabilities to generate binary predictions.
@@ -143,7 +226,6 @@ def threshold_based_predictions(probs, thresholds, tasks):
     else:
         predictions = (probs >= thresholds).float()
     return predictions
-
 
 
 # ********************************* PLOTS *********************************
