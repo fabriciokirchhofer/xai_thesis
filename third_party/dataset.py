@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torchvision.io import read_image, ImageReadMode
 
+import pretrainedmodels
+
 
 
 class BasicImageDataset(Dataset):
@@ -20,15 +22,13 @@ class BasicImageDataset(Dataset):
     
     def __getitem__(self, idx):
         img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-        image = read_image(path=img_path, mode=ImageReadMode.RGB).float()
-
+        image = read_image(path=img_path, mode=ImageReadMode.RGB).float()/255
         if self.test:
             labels = self.img_labels.iloc[idx, 1:].values.astype(float)
             labels = torch.tensor(labels, dtype=torch.float32)
         else:
             labels = self.img_labels.iloc[idx, 5:].values.astype(float)
             labels = torch.tensor(labels, dtype=torch.float32)
-
         if self.transform:
             image = self.transform(image)
         return image, labels
@@ -39,7 +39,7 @@ class BasicImageDataset(Dataset):
         return image.size()
 
 
-def get_dataloader(annotations_file, img_dir, transform, batch_size=1, shuffle=False, test=False):
+def get_dataloader(annotations_file, img_dir, transform=None, batch_size=1, shuffle=False, test=False):
     """
     Factory function to create a DataLoader for the CustomImageDataset.
     Args:
@@ -71,45 +71,91 @@ def compute_dataset_statistics(data_loader):
 
     returns: A torch.tensor for mean and one for std 
     """
-    total_mean = 0.0
-    total_std = 0.0
-    num_samples = 0
+    total_sum = 0.0
+    total_sq_sum = 0.0
+    total_pixels = 0
 
     print("Starts calculating mean and std from dataset.")
     for images, _ in data_loader:
         batch_size = images.size(0)
-        # Flatten height and width dimensions
+        # Flatten height and width dimensions: shape becomes [batch, channels, H*W]
         images = images.view(batch_size, images.size(1), -1)
-        total_mean += images.mean(2).sum(0)
-        total_std += images.std(2).sum(0)
-        num_samples += batch_size
+        total_sum += images.sum(dim=(0, 2))
+        total_sq_sum += (images ** 2).sum(dim=(0, 2))
+        total_pixels += batch_size * images.size(2)
 
-    mean = total_mean / num_samples
-    std = total_std / num_samples
+    mean = total_sum / total_pixels
+    std = torch.sqrt(total_sq_sum / total_pixels - mean ** 2)
     return mean, std
 
+
+def compute_dataset_statistics_no_resize(dataset):
+    """
+    Computes overall mean and standard deviation for a dataset without resizing images.
+    Args:
+        dataset (torch.utils.data.Dataset): Dataset returning (image, label) pairs.
+    Returns:
+        mean, std (torch.tensors) computed over all pixels.
+    """
+    total_sum = torch.zeros(3)      # assuming 3 channels (RGB)
+    total_sq_sum = torch.zeros(3)
+    total_pixels = 0
+
+    print("Starts calculating statistics without resizing")
+
+    for i in range(len(dataset)):
+        image, _ = dataset[i]  # image shape: [C, H, W] with potentially different H, W
+        # Flatten each image to shape [C, H*W]
+        image = image.view(image.size(0), -1)
+        total_sum += image.sum(dim=1)
+        total_sq_sum += (image ** 2).sum(dim=1)
+        total_pixels += image.size(1)
+
+    mean = total_sum / total_pixels
+    std = torch.sqrt(total_sq_sum / total_pixels - mean ** 2)
+    return mean, std
+
+
+
 if __name__ == '__main__':
-    # Example usage for testing purposes
+    # To calculate stats - Do not specify train/val/test in the img_path as it will take it from the labels_path.
+    train_data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/train.csv'
+    train_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
+
+
     val_data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/valid.csv'
     val_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
 
     test_data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/test.csv'
-    test_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0'
+    test_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
     
     # Optionally define a basic transform, e.g., resizing the image
     from torchvision import transforms
     basic_transform = transforms.Compose([
         transforms.Resize((320, 320))
     ])
+
+    # ****************** No resizing version starts ******************
+    # dataset = BasicImageDataset(val_data_labels_path, val_data_img_path, transform=None)
+    # mean, std = compute_dataset_statistics_no_resize(dataset)
+
+    # print("Dataset mean without resizing:", mean)
+    # print("Dataset std without resizing:", std)
+
+
+    # ****************** No resizing version ends ******************
     
-    # Create a DataLoader using the factory function
-    loader = get_dataloader(val_data_labels_path, val_data_img_path, basic_transform, batch_size=16)
+    #Create a DataLoader using the factory function
+    # loader = get_dataloader(val_data_labels_path, val_data_img_path, transform=None, batch_size=64)
     
-    # Test image size retrieval from the dataset
-    dataset_instance = BasicImageDataset(val_data_labels_path, val_data_img_path)
-    print("Image size for first image before transform:", dataset_instance.get_img_size(0))
+    # # Test image size retrieval from the dataset
+    # # dataset_instance = BasicImageDataset(val_data_labels_path, val_data_img_path)
+    # # print("Image size for first image before transform:", dataset_instance.get_img_size(0))
     
-    # Optionally compute and print dataset statistics (mean and std)
+    # # Optionally compute and print dataset statistics (mean and std)
     # mean, std = compute_dataset_statistics(loader)
     # print("Dataset mean:", mean)
     # print("Dataset std:", std)
+    print("TEST")
+    import pretrainedmodels
+    print(list(pretrainedmodels.__dict__.keys()))

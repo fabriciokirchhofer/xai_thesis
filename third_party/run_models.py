@@ -13,24 +13,24 @@ import pandas as pd
 ckpt_d_ignore_1 = 'pretrainedmodels/densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt' # torch.Size([14, 1024])
 
 debug_path_to_ckpt_d_ignore_1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt'
-
-
+debug_path_to_ckpt_r_ignore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_2/epoch=2-chexpert_competition_AUROC=0.86.ckpt' # AUROC during val = 0.7969021549350594
+debut_path_to_ckpt_i_irgnore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_2/epoch=2-chexpert_competition_AUROC=0.86_v2.ckpt'
 
 # Parse arguments -> Argumente Zerlegung
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Models exploration")
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
-    parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty')
+    parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=64, help='The batch size which will be passed to the model')
     parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
     parser.add_argument('--ckpt', type=str, default=debug_path_to_ckpt_d_ignore_1, help='Path to checkpoint file')
-    parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc to csv file') 
-    parser.add_argument('--save_thr', type=bool, default=False, help='Save optimized thresholds to csv file')
+
+    parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
-    parser.add_argument('--tune_thresholds', type=bool, default=False, help='If True, find optimal per-class thresholds using F1 score')
+    parser.add_argument('--tune_thresholds', type=bool, default=False, help='If True, find optimal per-class thresholds using F1 score. Will save it.')
     parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--run_test', type=bool, default=True, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
+    parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
     return parser.parse_args()
 
 def get_model(model, tasks, model_args):
@@ -49,7 +49,7 @@ def get_model(model, tasks, model_args):
     return model_class(tasks=tasks, model_args=model_args)
 
 
-# Load checkpoint
+# Load checkpoint and its parameters
 def load_checkpoint(model, checkpoint_path):
     ckpt = torch.load(checkpoint_path)
     state_dict = ckpt.get('state_dict', ckpt)
@@ -70,14 +70,20 @@ def prepare_data(model_args):
         val_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
 
         # Hardcoded normalization parameters (could also be computed but takes some time to run)
-        val_mean = torch.tensor([128.2917, 128.2917, 128.2917])
-        val_std = torch.tensor([74.3154, 74.3154, 74.3154])
+        # Stats calculated with val set
+        # val_mean = torch.tensor([0.5041, 0.5041, 0.5041])
+        # val_std = torch.tensor([0.2915, 0.2915, 0.2915])
+
+        # Stats calculated with train set
+        val_mean = torch.tensor([0.5031, 0.5031, 0.5031])
+        val_std = torch. tensor([0.2914, 0.2914, 0.2914])
         
         # Define inference transformation pipeline
         inference_transform = transforms.Compose([
-            transforms.Resize((320, 320)),
             transforms.ConvertImageDtype(torch.float),
+            transforms.Resize((320, 320)),
             transforms.Normalize(mean=val_mean.tolist(), std=val_std.tolist())
+                       
         ])
         
         data_loader = dataset.get_dataloader(
@@ -96,13 +102,13 @@ def prepare_data(model_args):
         test_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0'
 
         # Hardcoded normalization parameters (could also be computed but takes some time to run)
-        test_mean = torch.tensor([128.0847, 128.0847, 128.0847])
-        test_std = torch.tensor([74.5220, 74.5220, 74.5220])
+        test_mean = torch.tensor([128.0847, 128.0847, 128.0847])/255
+        test_std = torch.tensor([74.5220, 74.5220, 74.5220])/255
 
         # Define inference transformation pipeline
         tetst_inference_transform = transforms.Compose([
-            transforms.Resize((320, 320)),
             transforms.ConvertImageDtype(torch.float),
+            transforms.Resize((320, 320)),
             transforms.Normalize(mean=test_mean.tolist(), std=test_std.tolist())
         ])
     
@@ -135,56 +141,30 @@ def model_run(model, data_loader, tasks, model_args):
                 logits = model(images)
                 all_logits.append(logits.cpu())
 
-                """
-                #print("logits dim:", logits)
-                # Dynamically compute the number of tasks from the tasks list
-                probs = torch.sigmoid(logits)
-                predictions = (probs >= model_args.sigmoid_threshold).float()
-                all_probs.append(probs.cpu())
-                all_predictions.append(predictions.cpu())
-                all_labels.append(labels.cpu())
-                """
-
         # Concatenate batch results from list into one torch tensor
         all_logits = torch.cat(all_logits, dim=0)
 
 
 
-    # Old - this 3class model evaluation must be updated in order to work properly
-    else: # if model_uncertainty is True i.e. 3class model is used.
-        class_names = ['neg-zeros', 'uncertain', 'pos-ones']  
-        for images, labels in data_loader:
-            images, labels = images.to(device), labels.to(device)
-            logits = model(images)
-            # Dynamically compute the number of tasks from the tasks list
-            probs = F.softmax(logits.view(-1, len(tasks), 3), dim=1)
-            print("Probabilities:\n", probs)
-            # Print results for each sample
-            for i, sample_probs in enumerate(probs):
-                print(f"Sample {i+1}:")
-                for task_name, task_probs in zip(tasks, sample_probs):
-                    prob_str = ", ".join(f"{cls}: {prob.item():.4f}" for cls, prob in zip(class_names, task_probs))
-                    print(f"  {task_name}: {prob_str}")
-                print("-" * 40)
-            break  # Remove break to run on the whole dataset
-
-    
+    # # Old - this 3class model evaluation must be updated in order to work properly
+    # else: # if model_uncertainty is True i.e. 3class model is used.
+    #     class_names = ['neg-zeros', 'uncertain', 'pos-ones']  
+    #     for images, labels in data_loader:
+    #         images, labels = images.to(device), labels.to(device)
+    #         logits = model(images)
+    #         # Dynamically compute the number of tasks from the tasks list
+    #         probs = F.softmax(logits.view(-1, len(tasks), 3), dim=1)
+    #         print("Probabilities:\n", probs)
+    #         # Print results for each sample
+    #         for i, sample_probs in enumerate(probs):
+    #             print(f"Sample {i+1}:")
+    #             for task_name, task_probs in zip(tasks, sample_probs):
+    #                 prob_str = ", ".join(f"{cls}: {prob.item():.4f}" for cls, prob in zip(class_names, task_probs))
+    #                 print(f"  {task_name}: {prob_str}")
+    #             print("-" * 40)
+    #         break  # Remove break to run on the whole dataset
+  
     return all_logits
-
-"""
-        all_probs = torch.cat(all_probs, dim=0)
-        all_predictions = torch.cat(all_predictions, dim=0)
-        all_labels = torch.cat(all_labels, dim=0)
-
-        acc = compute_accuracy(all_predictions, all_labels)
-        print(f"Overall Accuracy with default threshold {model_args.sigmoid_threshold}: {acc:.4f}")
-        auroc = utils.auroc(predictions=all_probs, ground_truth=all_labels, tasks=tasks)
-        print(f"AUROC from sigmoid based probabilities:")
-        print("-" * 40)
-        for task, score in auroc.items():
-            print(f"{task}: score: {score:.4f}")
-    
-"""
 
 
 def eval_model(model_args, data_loader, tasks, logits):
@@ -195,58 +175,89 @@ def eval_model(model_args, data_loader, tasks, logits):
 
     """
 
-    print("****Start evaluation mode***")
-    # Concatenate batch results from list into one torch tensor
-    # Calculate probabilities obtained from the logits
-    probs = torch.sigmoid(logits)
-    predictions = utils.threshold_based_predictions(probs, model_args.sigmoid_threshold, tasks)
-
-
-
-    # Move to CPU (logits from model_run are already concatenated across batches)
-    probs = probs.cpu()
-    predictions = predictions.cpu()
-
-
-    # Gather ground truth labels from data_loader
+    # Gather ground truth labels from data_loader size(n_images, tasks)
     gt_labels = []
     for images, labels in data_loader:
         gt_labels.append(labels.cpu())
     gt_labels = torch.cat(gt_labels, dim=0)
 
+    print("****Start evaluation mode****")
+    # Concatenate batch results from list into one torch tensor
+    # Calculate probabilities obtained from the logits
+    probs = torch.sigmoid(logits)
 
-    acc = utils.compute_accuracy(predictions, gt_labels)
-    print(f"Overall Accuracy with default threshold {model_args.sigmoid_threshold}: {acc:.4f}")
+    #******************** get max prob per view start ********************
+    df = utils.extract_study_id(mode=model_args.run_test)
 
-    auroc = utils.auroc(predictions=probs, ground_truth=gt_labels, tasks=tasks)
-    print(f"AUROC from sigmoid based probabilities:")
-    print("-" * 40)
-    for task, score in auroc.items():
-        print(f"{task}: score: {score:.4f}")
+    # Add study_id col to df
+    #print("Current df:", df.head())
 
-    if model_args.plot_roc:
-        print("Plot the ROC curves")
-        utils.plot_roc(predictions=probs, ground_truth=gt_labels, tasks=tasks)    
+    # Convert probs and gt_labels to df
+    prob_df = pd.DataFrame(probs.detach().cpu().numpy(), columns=tasks)
+    #print("Current df:", prob_df.head())
+    gt_df   = pd.DataFrame(gt_labels.detach().cpu().numpy(), columns=tasks)
+    print("******************Shape of prob_df:", prob_df.shape)
 
-    # If threshold tuning is enabled, compute optimal per-class thresholds based on F1 score
-    if model_args.tune_thresholds:
-        probs_np = probs.numpy()
-        labels_np = gt_labels.numpy()
-        optimal_thresholds, score = utils.find_optimal_thresholds(probabilities=probs_np, ground_truth=labels_np, tasks=tasks, metric=model_args.metric)
-        print(f"\nOptimal thresholds per class based on {model_args.metric} score:")
+    # Match each row of predictions and gt to the df from the csv file
+    prob_df['study_id'] = df['study_id']
+    gt_df['study_id'] = df['study_id']
+
+    # Group by study_id and take only the maximum predicted probability per study.
+    agg_prob = prob_df.groupby('study_id').max()
+    agg_gt = gt_df.groupby('study_id').max()
+    print("******************Shape of agg_prob:", agg_prob.shape)
+ 
+    probs = torch.tensor(agg_prob.values)
+    gt_labels   = torch.tensor(agg_gt.values)
+    #******************** get max prob per view end ********************
+
+    if not model_args.run_test:
+        predictions = utils.threshold_based_predictions(probs, model_args.sigmoid_threshold, tasks)
+
+        # Move to CPU (logits from model_run are already concatenated across batches)
+        probs = probs.cpu()
+        predictions = predictions.cpu()
+
+
+        acc = utils.compute_accuracy(predictions, gt_labels)
         print("-" * 40)
-        for task in tasks:
-            print(f"{task}: threshold = {optimal_thresholds[task]:.2f}, {model_args.metric} score = {score[task]:.4f}")
-        # Apply the tuned thresholds to generate new predictions and compute accuracy
+        print(f"Overall Accuracy with default threshold {model_args.sigmoid_threshold}: {acc:.4f}")
 
-        tuned_predictions = torch.zeros_like(predictions)
-        for i, task in enumerate(tasks):
-            tuned_predictions[:, i] = (probs[:, i] >= optimal_thresholds[task]).float()
-        tuned_acc = utils.compute_accuracy(tuned_predictions, gt_labels)
-        print(f"Overall Accuracy with tuned thresholds: {tuned_acc:.4f}")
+        auroc = utils.auroc(predictions=probs, ground_truth=gt_labels, tasks=tasks)
+        print("-" * 40)
+        print(f"AUROC from sigmoid based probabilities:")
 
-        if model_args.save_thr:
-            #TODO: Think about moving the thresholds not to the results folder but to the location of the .ckpt files itself
+        eval_tasks = ['Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
+        eval_auroc = 0
+        for task, score in auroc.items(): 
+            print(f"{task}: score: {score:.4f}")
+            if task in eval_tasks:
+                eval_auroc += score
+        eval_auroc /= 5
+        print('Final evaluation AUROC:', eval_auroc)
+    
+        if model_args.plot_roc:
+            print("Plot the ROC curves")
+            utils.plot_roc(predictions=probs, ground_truth=gt_labels, tasks=tasks)    
+
+        # If threshold tuning is enabled, compute optimal per-class thresholds based on F1 score
+        if model_args.tune_thresholds:
+            probs_np = probs.numpy()
+            labels_np = gt_labels.numpy()
+            optimal_thresholds, score = utils.find_optimal_thresholds(probabilities=probs_np, ground_truth=labels_np, tasks=tasks, metric=model_args.metric)
+            print("-" * 40)
+            print(f"\nOptimal thresholds per class based on {model_args.metric} score:")
+            for task in tasks:
+                print(f"{task}: threshold = {optimal_thresholds[task]:.2f}, {model_args.metric} score = {score[task]:.4f}")
+            # Apply the tuned thresholds to generate new predictions and compute accuracy
+
+            tuned_predictions = torch.zeros_like(predictions)
+            for i, task in enumerate(tasks):
+                tuned_predictions[:, i] = (probs[:, i] >= optimal_thresholds[task]).float()
+            tuned_acc = utils.compute_accuracy(tuned_predictions, gt_labels)
+            print(f"Overall Accuracy with tuned thresholds: {tuned_acc:.4f}")
+
+
             filename = ('results/' +  str(model_args.model) + '_tuned_' + str(model_args.metric) + '_thresholds.csv')
             with open(filename, mode='w', newline='') as csv_file:
                 writer = csv.writer(csv_file, delimiter=',')
@@ -256,21 +267,22 @@ def eval_model(model_args, data_loader, tasks, logits):
                 for task, auc in optimal_thresholds.items():
                     writer.writerow([task, auc])
 
+        
+        # Save accuracy based on sigmoid threshold to csv file
+        if model_args.save_acc_roc:
+            filename = ('results/'+  str(model_args.model) + '_sigmoid' +  str(model_args.sigmoid_threshold) + '.csv')
+            with open(filename, mode='w', newline='') as csv_file:
+                writer = csv.writer(csv_file, delimiter=' ')
+                # Header
+                writer.writerow(['Metric', 'Value'])
+                # Accuracy
+                writer.writerow(['Accuracy', acc])
+                # ROC AUC for each task
+                for task, auc in auroc.items():
+                    writer.writerow([f'ROC AUC {task}', auc])
     
-    # Save accuracy based on sigmoid threshold to csv file
-    if model_args.save_acc_roc:
-        filename = ('results/sigmoid' +  str(model_args.sigmoid_threshold) + '.csv')
-        with open(filename, mode='w', newline='') as csv_file:
-            writer = csv.writer(csv_file, delimiter=' ')
-            # Header
-            writer.writerow(['Metric', 'Value'])
-            # Accuracy
-            writer.writerow(['Accuracy', acc])
-            # ROC AUC for each task
-            for task, auc in auroc.items():
-                writer.writerow([f'ROC AUC {task}', auc])
-
-        return print("-" * 50)
+    print("********** Finished Eval mode **********")
+    return 0
 
 
 
@@ -317,13 +329,18 @@ def run_test_with_thresholds(model, model_args, tasks, test_loader, threshold_cs
     acc = utils.compute_accuracy(predictions, labels)
     print(f"[TEST] Accuracy using tuned thresholds: {acc:.4f}")
 
-    auroc_scores = utils.auroc(probs, labels, tasks)
-    print("[TEST] AUROC per task:")
+    youden = utils.comput_youden_idx(ground_truth=labels, preds=predictions, tasks=tasks)
     print("-" * 40)
-    for task, score in auroc_scores.items():
-        print(f"{task}: {score:.4f}")
+    print(f"[TEST] Youden-index using tuned thresholds")
+    for task in tasks:
+        print(f"{task}: score = {youden[task]:.4f}")
 
-    return {"accuracy": acc, "auroc": auroc_scores}
+    f1 = utils.compute_f1_score(ground_truth=labels, preds=predictions, tasks=tasks)
+    print("-" * 40)
+    print(f"[TEST] F1-score using tuned thresholds")
+    for task in tasks:
+        print(f"{task}: score = {f1[task]:.4f}")
+    return {"accuracy": acc}
 
 
 
@@ -346,6 +363,7 @@ def main():
         'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
         'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices'
     ]
+
     
     # Create the model based on provided arguments
     model = get_model(model_args.model, tasks, model_args)
@@ -363,11 +381,14 @@ def main():
     eval_model(model_args=model_args, data_loader=data_loader, tasks=tasks, logits=logits)
 
 
-    debug_threshold_path = '/home/fkirchhofer/repo/xai_thesis/third_party/results/DenseNet121_tuned_f1_thresholds.csv'
-
     if model_args.run_test:
+        #debug_densenet_threshold_path = '/home/fkirchhofer/repo/xai_thesis/third_party/results/DenseNet121_tuned_f1_thresholds.csv'
+        debug_resnet_threshold_path = '/home/fkirchhofer/repo/xai_thesis/third_party/results/ResNet152_tuned_f1_thresholds.csv'
+        #debug_inception_threshold_path = ''
+
+
         test_loader = prepare_data(model_args)  # or a specific `prepare_test_data()`
-        run_test_with_thresholds(model, model_args, tasks, test_loader, debug_threshold_path)
+        run_test_with_thresholds(model, model_args, tasks, test_loader, debug_resnet_threshold_path)
 
 
 if __name__ == '__main__':
