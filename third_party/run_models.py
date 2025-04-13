@@ -2,9 +2,9 @@ import argparse
 import torch
 import torch.nn.functional as F
 from torchvision import transforms
-import models
-import utils
-import dataset
+from third_party import models
+from third_party import utils
+from third_party import dataset
 import csv
 import pandas as pd
 
