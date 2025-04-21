@@ -1,10 +1,12 @@
 import argparse
+import os
 import torch
 import torch.nn.functional as F
 from torchvision import transforms
-from third_party import models
-from third_party import utils
-from third_party import dataset
+# python -m third_party.run_models
+import third_party.utils as utils
+import third_party.dataset as dataset
+import third_party.models as models
 import csv
 import pandas as pd
 
@@ -12,9 +14,24 @@ import pandas as pd
 # Calculated average AUROC over atelectasis, cardiomegaly, consolidation, edema, and pleural effusion = 0.8341 (val)
 ckpt_d_ignore_1 = 'pretrainedmodels/densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt' # torch.Size([14, 1024])
 
-debug_path_to_ckpt_d_ignore_1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt'
+# DenseNet121
+debug_path_to_ckpt_d_ignore_1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt' # AUROC during val = 0.8245074203947084
+debug_path_to_ckpt_d_ignore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_2/epoch=2-chexpert_competition_AUROC=0.88.ckpt' # AUROC during val = 0.8560705112383094
+debug_path_to_ckpt_d_ignore_3 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_3/epoch=2-chexpert_competition_AUROC=0.88.ckpt' # AUROC during val = 0.854155053128039
+
+# Resnet152
 debug_path_to_ckpt_r_ignore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_2/epoch=2-chexpert_competition_AUROC=0.86.ckpt' # AUROC during val = 0.7969021549350594
-debut_path_to_ckpt_i_irgnore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_2/epoch=2-chexpert_competition_AUROC=0.86_v2.ckpt'
+debug_path_to_ckpt_r_ignore_3_ep2_1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.86.ckpt' # AUROC during val = 0.8141815614997918
+debug_path_to_ckpt_r_ignore_3x_ep2_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.87.ckpt' # AUROC during val = 0.8207077659558035
+debug_path_to_ckpt_r_ignore_3x_ep1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=1-chexpert_competition_AUROC=0.87.ckpt' # AUROC during val = 0.8258944682967464
+
+
+# Inception V4
+debug_path_to_ckpt_i_ignore_1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_1/epoch=2-chexpert_competition_AUROC=0.85.ckpt' # AUROC during val = 0.4681767038450782 (with inception preprocessing otherwise AUROC = 0.4972145074342835)
+debug_path_to_ckpt_i_ignore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_2/epoch=2-chexpert_competition_AUROC=0.86_v2.ckpt' # AUROC during val =  0.47889381692531796 (with inception preprocessing otherwise AUROC = 0.4492819192735242)
+debug_path_to_ckpt_i_ignore_3 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_3/epoch=2-chexpert_competition_AUROC=0.85.ckpt' # AUROC during val = 0.4928516042460034 (with inception preprocessing otherwise  AUROC = 0.41869342379579316)
+
+
 
 # Parse arguments -> Argumente Zerlegung
 def parse_arguments():
@@ -22,8 +39,8 @@ def parse_arguments():
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
-    parser.add_argument('--model', type=str, default='Inceptionv4', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=debut_path_to_ckpt_i_irgnore_2, help='Path to checkpoint file')
+    parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
+    parser.add_argument('--ckpt', type=str, default=debug_path_to_ckpt_d_ignore_2, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
@@ -40,12 +57,9 @@ def get_model(model, tasks, model_args):
         'ResNet152': models.ResNet152,
         'Inceptionv4': models.Inceptionv4
     }
-
     # Return value of dict model_map {key: value}
     # models.DenseNet121 will only be used if no valid or recognized value is passed in the model_args
     model_class = model_map.get(model, models.DenseNet121)
-    # print(f"Model_class {model_class}")
-    # print(f"Model_class type {type(model_class)}")
     return model_class(tasks=tasks, model_args=model_args)
 
 
@@ -61,61 +75,77 @@ def load_checkpoint(model, checkpoint_path):
 
 # Prep dataset
 def prepare_data(model_args):
+
+    # Start calculating statistics with chatGPT version torch
+    # DenseNet121 AUROC: 0.8245074203947084
+    # Dataset mean: tensor([0.5032, 0.5032, 0.5032])
+    # Dataset std: tensor([0.2919, 0.2919, 0.2919])
+
+    # Starting to calculcate statistics with chatGPT numpy version
+    # DenseNet121 AUROC: 0.8245287537280417
+    # Dataset mean: [0.50320443 0.50320443 0.50320443]
+    # Dataset std: [0.29185723 0.29185723 0.29185723]
+
+    # Starts calculating mean and std from dataset with numpy function
+    # DenseNet121 AUROC: 0.8242043527725201
+    # Dataset mean: [0.50356629 0.50356629 0.50356629]
+    # Dataset std: [0.29117174 0.29117174 0.29117174]
+
+    # Starts calculating mean and std from dataset with *****old function*****.
+    # DenseNet121 AUROC: 0.8245074203947084  
+    # Dataset mean: tensor([0.5032, 0.5032, 0.5032])
+    # Dataset std: tensor([0.2919, 0.2919, 0.2919])
+
+    # Stats calculated with train set - initial
+    # DenseNet121 AUROC: 0.8243688506018418   
+    # train_mean = torch.tensor([0.5031, 0.5031, 0.5031])
+    # train_std = torch. tensor([0.2914, 0.2914, 0.2914])
+
+    train_mean = torch.tensor([0.5032, 0.5032, 0.5032])
+    train_std = torch. tensor([0.2919, 0.2919, 0.2919])
+    size = (320, 320)
+
+    # if model_args.model == 'Inceptionv4':
+    #     print("Overwrite stats for Inceptionv4 model")
+    #     # mean and std for normalization based on requirements for Inception v4
+    #     train_mean = torch.tensor([0.5, 0.5, 0.5])
+    #     train_std = torch.tensor([0.5, 0.5, 0.5])
+    #     size = (299, 299)
+
+    # Define inference transformation pipeline for the inception v4 architecture
+    inference_transform = transforms.Compose([
+        transforms.ConvertImageDtype(torch.float),
+        transforms.Resize(size), # Resizing based of requirements for Inception v4
+        transforms.Normalize(mean=train_mean.tolist(), std=train_std.tolist())                
+        ])
     
     if not model_args.run_test:
         print("Prepare validation data...") 
+        data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/valid.csv'
+        data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
 
-        # Data paths
-        val_data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/valid.csv'
-        val_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
-
-        # Hardcoded normalization parameters (could also be computed but takes some time to run)
-        # Stats calculated with val set
-        # val_mean = torch.tensor([0.5041, 0.5041, 0.5041])
-        # val_std = torch.tensor([0.2915, 0.2915, 0.2915])
-
-        # Stats calculated with train set
-        val_mean = torch.tensor([0.5031, 0.5031, 0.5031])
-        val_std = torch. tensor([0.2914, 0.2914, 0.2914])
-        
-        # Define inference transformation pipeline
-        inference_transform = transforms.Compose([
-            transforms.ConvertImageDtype(torch.float),
-            transforms.Resize((320, 320)),
-            transforms.Normalize(mean=val_mean.tolist(), std=val_std.tolist())
-                       
-        ])
-        
         data_loader = dataset.get_dataloader(
-            annotations_file=val_data_labels_path,
-            img_dir=val_data_img_path,
+            annotations_file=data_labels_path,
+            img_dir=data_img_path,
             transform=inference_transform,
             batch_size=model_args.batch_size,
             shuffle=False,
             test=False
-        )
-
+            )
 
     if model_args.run_test:
         print("Prepare test data...")
-        test_data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/test.csv'
-        test_data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0'
+        # Hardcoded normalization parameters from test set (could also be computed but takes some time to run)
+        #test_mean = torch.tensor([128.0847, 128.0847, 128.0847])/255
+        #test_std = torch.tensor([74.5220, 74.5220, 74.5220])/255
 
-        # Hardcoded normalization parameters (could also be computed but takes some time to run)
-        test_mean = torch.tensor([128.0847, 128.0847, 128.0847])/255
-        test_std = torch.tensor([74.5220, 74.5220, 74.5220])/255
+        data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/test.csv'
+        data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0'
 
-        # Define inference transformation pipeline
-        tetst_inference_transform = transforms.Compose([
-            transforms.ConvertImageDtype(torch.float),
-            transforms.Resize((320, 320)),
-            transforms.Normalize(mean=test_mean.tolist(), std=test_std.tolist())
-        ])
-    
         data_loader = dataset.get_dataloader(
-            annotations_file=test_data_labels_path,
-            img_dir=test_data_img_path,
-            transform=tetst_inference_transform,
+            annotations_file=data_labels_path,
+            img_dir=data_img_path,
+            transform=inference_transform,
             batch_size=model_args.batch_size,
             shuffle=False,
             test=True
@@ -125,45 +155,25 @@ def prepare_data(model_args):
 
 
 # Run the model
-def model_run(model, data_loader, tasks, model_args):
+def model_run(model, data_loader):
     # Use GPU if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device for evaluation:", device)
     model.to(device)
-  
-    if not model_args.model_uncertainty: # If 3class model is used
-        print("Running in standard multi-label (sigmoid) mode.\n")
-        all_logits = []
-        
-        with torch.no_grad():
-            for images, labels in data_loader:
-                images, labels = images.to(device), labels.to(device)
-                logits = model(images)
-                all_logits.append(logits.cpu())
+    model.eval()
 
-        # Concatenate batch results from list into one torch tensor
-        all_logits = torch.cat(all_logits, dim=0)
+    print("Running in standard multi-label (sigmoid) mode.\n")
+    all_logits = []
+    
+    with torch.no_grad():
+        for images, labels in data_loader:
+            images, labels = images.to(device), labels.to(device)
+            logits = model(images)
+            all_logits.append(logits.cpu())
 
+    # Concatenate batch results from list into one torch tensor
+    all_logits = torch.cat(all_logits, dim=0)
 
-
-    # # Old - this 3class model evaluation must be updated in order to work properly
-    # else: # if model_uncertainty is True i.e. 3class model is used.
-    #     class_names = ['neg-zeros', 'uncertain', 'pos-ones']  
-    #     for images, labels in data_loader:
-    #         images, labels = images.to(device), labels.to(device)
-    #         logits = model(images)
-    #         # Dynamically compute the number of tasks from the tasks list
-    #         probs = F.softmax(logits.view(-1, len(tasks), 3), dim=1)
-    #         print("Probabilities:\n", probs)
-    #         # Print results for each sample
-    #         for i, sample_probs in enumerate(probs):
-    #             print(f"Sample {i+1}:")
-    #             for task_name, task_probs in zip(tasks, sample_probs):
-    #                 prob_str = ", ".join(f"{cls}: {prob.item():.4f}" for cls, prob in zip(class_names, task_probs))
-    #                 print(f"  {task_name}: {prob_str}")
-    #             print("-" * 40)
-    #         break  # Remove break to run on the whole dataset
-  
     return all_logits
 
 
@@ -182,21 +192,15 @@ def eval_model(model_args, data_loader, tasks, logits):
     gt_labels = torch.cat(gt_labels, dim=0)
 
     print("****Start evaluation mode****")
-    # Concatenate batch results from list into one torch tensor
-    # Calculate probabilities obtained from the logits
-    probs = torch.sigmoid(logits)
+    probs = torch.sigmoid(logits).cpu()
 
     #******************** get max prob per view start ********************
     df = utils.extract_study_id(mode=model_args.run_test)
-
-    # Add study_id col to df
     #print("Current df:", df.head())
 
     # Convert probs and gt_labels to df
     prob_df = pd.DataFrame(probs.detach().cpu().numpy(), columns=tasks)
-    #print("Current df:", prob_df.head())
     gt_df   = pd.DataFrame(gt_labels.detach().cpu().numpy(), columns=tasks)
-    print("******************Shape of prob_df:", prob_df.shape)
 
     # Match each row of predictions and gt to the df from the csv file
     prob_df['study_id'] = df['study_id']
@@ -205,7 +209,6 @@ def eval_model(model_args, data_loader, tasks, logits):
     # Group by study_id and take only the maximum predicted probability per study.
     agg_prob = prob_df.groupby('study_id').max()
     agg_gt = gt_df.groupby('study_id').max()
-    print("******************Shape of agg_prob:", agg_prob.shape)
  
     probs = torch.tensor(agg_prob.values)
     gt_labels   = torch.tensor(agg_gt.values)
@@ -218,12 +221,11 @@ def eval_model(model_args, data_loader, tasks, logits):
         probs = probs.cpu()
         predictions = predictions.cpu()
 
-
         acc = utils.compute_accuracy(predictions, gt_labels)
         print("-" * 40)
         print(f"Overall Accuracy with default threshold {model_args.sigmoid_threshold}: {acc:.4f}")
 
-        auroc = utils.auroc(predictions=probs, ground_truth=gt_labels, tasks=tasks)
+        auroc = utils.auroc(probabilities=probs, ground_truth=gt_labels, tasks=tasks)
         print("-" * 40)
         print(f"AUROC from sigmoid based probabilities:")
 
@@ -258,7 +260,7 @@ def eval_model(model_args, data_loader, tasks, logits):
             print(f"Overall Accuracy with tuned thresholds: {tuned_acc:.4f}")
 
 
-            filename = ('results/' +  str(model_args.model) + '_tuned_' + str(model_args.metric) + '_thresholds.csv')
+            filename = os.path.expanduser('~/repo/xai_thesis/third_party/results/' +  str(model_args.model) + '_tuned_' + str(model_args.metric) + '_thresholds.csv')
             with open(filename, mode='w', newline='') as csv_file:
                 writer = csv.writer(csv_file, delimiter=',')
                 # Header
@@ -270,7 +272,7 @@ def eval_model(model_args, data_loader, tasks, logits):
         
         # Save accuracy based on sigmoid threshold to csv file
         if model_args.save_acc_roc:
-            filename = ('results/'+  str(model_args.model) + '_sigmoid' +  str(model_args.sigmoid_threshold) + '.csv')
+            filename = os.path.expanduser('~/repo/xai_thesis/third_party/results/'+  str(model_args.model) + '_sigmoid' +  str(model_args.sigmoid_threshold) + '.csv')
             with open(filename, mode='w', newline='') as csv_file:
                 writer = csv.writer(csv_file, delimiter=' ')
                 # Header
@@ -343,12 +345,8 @@ def run_test_with_thresholds(model, model_args, tasks, test_loader, threshold_cs
     return {"accuracy": acc}
 
 
-
-
-
 def main():
     model_args = parse_arguments()
-    
     """
     # TODO: Based on Mikes recommendation: Check two ways how to replace and handle parse_arguments
     import json
@@ -357,6 +355,7 @@ def main():
 
     from itertools import permutations
     """
+
     tasks = [
         'No Finding', 'Enlarged Cardiomediastinum' ,'Cardiomegaly', 
         'Lung Opacity', 'Lung Lesion' , 'Edema' ,
@@ -364,7 +363,6 @@ def main():
         'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices'
     ]
 
-    
     # Create the model based on provided arguments
     model = get_model(model_args.model, tasks, model_args)
     print("Loaded model:", type(model))
@@ -376,10 +374,9 @@ def main():
     data_loader = prepare_data(model_args=model_args)
     
     # Run inference on one batch and print the predictions
-    logits = model_run(model=model, data_loader=data_loader, tasks=tasks, model_args=model_args)
+    logits = model_run(model=model, data_loader=data_loader)
 
     eval_model(model_args=model_args, data_loader=data_loader, tasks=tasks, logits=logits)
-
 
     if model_args.run_test:
         #debug_densenet_threshold_path = '/home/fkirchhofer/repo/xai_thesis/third_party/results/DenseNet121_tuned_f1_thresholds.csv'
