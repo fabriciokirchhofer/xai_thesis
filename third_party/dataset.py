@@ -1,6 +1,7 @@
 import os
 import torch
 import pandas as pd
+import numpy as np
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
@@ -46,7 +47,7 @@ def get_dataloader(annotations_file, img_dir, transform=None, batch_size=1, shuf
         annotations_file (str): path to csv file with labels / annotations
         img_dir (str): pyth to main image directory
         transform (callable, optional): transformations by default False 
-        batch_size (int): by default 64
+        batch_size (int): by default 1
         shuffle (bool): by default False
         test (bool): In test mode the csv file with the lables with skip the first 5 columns. By default False
 
@@ -59,33 +60,141 @@ def get_dataloader(annotations_file, img_dir, transform=None, batch_size=1, shuf
         num_workers = 4
     else:
         num_workers = 0
+    print(f"Batch_size: {batch_size} with num_workers: {num_workers}")
 
     dataset = BasicImageDataset(annotations_file, img_dir, transform=transform, test=test)
     return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
-def compute_dataset_statistics(data_loader):
+## Old original version
+# def compute_dataset_statistics(data_loader):
+#     """
+#     Computes and returns the mean and standard deviation of the dataset.
+#     Args:
+#         data_loader (callable) iterable dataset containing images along axis 0
+
+#     returns: A torch.tensor for mean and one for std 
+#     """
+#     total_sum = 0.0
+#     total_sq_sum = 0.0
+#     total_pixels = 0
+
+#     print("Starts calculating mean and std from dataset with *****old function*****.")
+#     for images, _ in data_loader:
+#         batch_size = images.size(0)
+#         # Flatten height and width dimensions: shape becomes [batch, channels, H*W]
+#         images = images.view(batch_size, images.size(1), -1)
+#         total_sum += images.sum(dim=(0, 2))
+#         total_sq_sum += (images ** 2).sum(dim=(0, 2))
+#         total_pixels += batch_size * images.size(2)
+
+#     mean = total_sum / total_pixels
+#     std = torch.sqrt(total_sq_sum / total_pixels - mean ** 2)
+#     return mean, std
+
+
+# # Self made version
+# def compute_dataset_statistics(data_loader):
+#     """
+#     Computes and returns the mean and standard deviation of the dataset.
+#     Args:
+#         data_loader (callable) iterable dataset containing images along axis 0
+
+#     returns: A torch.tensor for mean and one for std 
+#     """
+#     total_sum = np.zeros(3)
+#     total_sq_sum = np.zeros(3)
+#     total_pixels = 0
+
+#     print("Starts calculating mean and std from dataset with numpy function")
+#     for images, _ in data_loader:
+#         # Flatten height and width dimensions: shape becomes [batch, channels, H*W]
+#         #images = images.view(batch_size, images.size(1), -1)
+#         image = images.clone().detach().numpy().reshape((3,-1))
+#         #print("Shape of image:", image.shape[1])
+
+#         total_sum += np.sum(image, axis=1)
+#         total_sq_sum += np.sum((image**2), axis=1)
+#         total_pixels += image.shape[1]
+
+#     mean = total_sum / total_pixels
+#     std = np.sqrt(total_sq_sum / total_pixels - mean ** 2)
+#     return mean, std
+
+# # Chat GPT version with numpy
+# def compute_dataset_statistics(data_loader):
+#     """
+#     Computes per‑channel mean and std over a dataset.
+
+#     Args:
+#         data_loader: yields (images, labels), where images is a torch.Tensor
+#                      of shape (B, C, H, W) and dtype float32.
+
+#     Returns:
+#         mean: np.ndarray of shape (C,)
+#         std:  np.ndarray of shape (C,)
+#     """
+#     # Peek to get channel count
+#     first_batch = next(iter(data_loader))[0]
+#     C = first_batch.shape[1]
+
+#     total_sum    = np.zeros(C)
+#     total_sq_sum = np.zeros(C)
+#     total_pixels = 0
+#     print("Starting to calculcate statistics with chatGPT numpy version")
+#     for images, _ in data_loader:
+#         np_img = images.cpu().numpy()       # (B, C, H, W)
+#         np_img = np_img.reshape(C, -1)      # (C, B*H*W)
+#         total_sum    += np_img.sum(axis=1)
+#         total_sq_sum += (np_img**2).sum(axis=1)
+#         total_pixels += np_img.shape[1]
+
+#     mean = total_sum / total_pixels
+#     std  = np.sqrt(total_sq_sum / total_pixels - mean**2)
+#     return mean, std
+
+# ChatGPT version with torch
+def compute_dataset_statistics(data_loader, device='cpu'):
     """
-    Computes and returns the mean and standard deviation of the dataset.
+    Computes per‑channel mean and std over a dataset using PyTorch.
+
     Args:
-        data_loader (callable) iterable dataset containing images along axis 0
+        data_loader: yields (images, labels), where images is a torch.Tensor
+                     of shape (B, C, H, W), dtype=torch.float32.
+        device:      device where tensors should live during accumulation.
 
-    returns: A torch.tensor for mean and one for std 
+    Returns:
+        mean: torch.Tensor of shape (C,)
+        std:  torch.Tensor of shape (C,)
     """
-    total_sum = 0.0
-    total_sq_sum = 0.0
-    total_pixels = 0
+    # Grab first batch to get channel count
+    first_batch = next(iter(data_loader))[0]
+    C = first_batch.size(1)
 
-    print("Starts calculating mean and std from dataset.")
-    for images, _ in data_loader:
-        batch_size = images.size(0)
-        # Flatten height and width dimensions: shape becomes [batch, channels, H*W]
-        images = images.view(batch_size, images.size(1), -1)
-        total_sum += images.sum(dim=(0, 2))
-        total_sq_sum += (images ** 2).sum(dim=(0, 2))
-        total_pixels += batch_size * images.size(2)
+    # Accumulators
+    cnt = 0
+    sum_channels = torch.zeros(C, device=device)
+    sum_sq_channels = torch.zeros(C, device=device)
+    print("Start calculating statistics with chatGPT version torch")
 
-    mean = total_sum / total_pixels
-    std = torch.sqrt(total_sq_sum / total_pixels - mean ** 2)
+    with torch.no_grad():
+        for images, _ in data_loader:
+            # Move to desired device
+            images = images.to(device)       # (B, C, H, W)
+            B, C, H, W = images.shape
+
+            # Flatten height & width: shape → (B, C, H*W)
+            imgs = images.view(B, C, -1)
+
+            # Sum over batch & pixels
+            sum_channels    += imgs.sum(dim=[0, 2])
+            sum_sq_channels += (imgs ** 2).sum(dim=[0, 2])
+            cnt += B * H * W
+
+    # Mean & std
+    mean = sum_channels    / cnt
+    var  = sum_sq_channels / cnt - mean**2
+    std  = torch.sqrt(var)
+
     return mean, std
 
 
@@ -132,6 +241,7 @@ if __name__ == '__main__':
     # Optionally define a basic transform, e.g., resizing the image
     from torchvision import transforms
     basic_transform = transforms.Compose([
+        transforms.ConvertImageDtype(torch.float),
         transforms.Resize((320, 320))
     ])
 
@@ -146,16 +256,14 @@ if __name__ == '__main__':
     # ****************** No resizing version ends ******************
     
     #Create a DataLoader using the factory function
-    # loader = get_dataloader(val_data_labels_path, val_data_img_path, transform=None, batch_size=64)
+    loader = get_dataloader(train_data_labels_path, train_data_img_path, transform=basic_transform, batch_size=64)
     
-    # # Test image size retrieval from the dataset
-    # # dataset_instance = BasicImageDataset(val_data_labels_path, val_data_img_path)
-    # # print("Image size for first image before transform:", dataset_instance.get_img_size(0))
+    # Test image size retrieval from the dataset
+    # dataset_instance = BasicImageDataset(val_data_labels_path, val_data_img_path)
+    # print("Image size for first image before transform:", dataset_instance.get_img_size(0))
     
-    # # Optionally compute and print dataset statistics (mean and std)
-    # mean, std = compute_dataset_statistics(loader)
-    # print("Dataset mean:", mean)
-    # print("Dataset std:", std)
-    print("TEST")
-    import pretrainedmodels
-    print(list(pretrainedmodels.__dict__.keys()))
+    # Optionally compute and print dataset statistics (mean and std)
+    mean, std = compute_dataset_statistics(loader)
+    print("Dataset mean:", mean)
+    print("Dataset std:", std)
+

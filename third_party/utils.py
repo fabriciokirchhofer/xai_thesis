@@ -1,5 +1,6 @@
 from sklearn import metrics
 from sklearn.metrics import f1_score, auc, roc_curve
+from sklearn.metrics import roc_auc_score
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -22,35 +23,6 @@ def remove_prefix(dict, prefix):
             new_key = key
         new_state_dict[new_key] = value
     return new_state_dict
-
-
-# def extract_study_id(mode):
-#     """
-#     Args:
-#         mode (str): either 'val' or 'test'. 
-#         It will then go either to the validation or test csv file
-#         and extract from there the study id.
-
-#     Return: DataFrame with the study id
-
-#     """
-#     if mode == 'val':
-#         df = pd.read_csv('/home/fkirchhofer/data/CheXpert-v1.0/valid.csv')
-#         parts = df.split('/')
-#         agg =  '/'.join(parts[:3])
-#         df['study_id'] = df.iloc[:,0].apply(agg)
-#         return df
-    
-#     elif mode == 'test':
-#         df = pd.read_csv('/home/fkirchhofer/data/CheXpert-v1.0/test.csv')
-#         parts = df.split('/')
-#         agg =  '/'.join(parts[:3])
-#         df['study_id'] = df.iloc[:,0].apply(agg)
-#         return df
-#     else:
-#         raise ValueError(f"Expected either 'val' or 'test' tasks, but got sth else.")
-
-
 
 def extract_study_id(mode):
     """
@@ -75,8 +47,6 @@ def extract_study_id(mode):
 
     else:
         raise ValueError("Expected either 'val' or 'test' mode, but got something else.")
-
-#******************** Evaluation ********************
 
 
 def compute_accuracy(predictions, labels):
@@ -104,7 +74,6 @@ def comput_youden_idx(ground_truth, preds, tasks):
         youden_idx[task] = score
     return youden_idx
 
-
 def compute_f1_score(ground_truth, preds, tasks):
     f1_scores = {}
     for i, task in enumerate(tasks):
@@ -113,8 +82,7 @@ def compute_f1_score(ground_truth, preds, tasks):
         f1_scores[task] = score
     return f1_scores
 
-
-def auroc(predictions, ground_truth, tasks, n_classes=14):
+def auroc(probabilities:np.ndarray, ground_truth:np.ndarray, tasks, n_classes=14):
     """
     Computes per-class AUROC using continuous probabilities.
     Args:
@@ -128,17 +96,17 @@ def auroc(predictions, ground_truth, tasks, n_classes=14):
 
     """
     # Check format of predictions
-    if torch.is_tensor(predictions):
-        predictions = predictions.detach().cpu().numpy()
-    elif not isinstance(predictions, np.ndarray):       
-        predictions = np.ndarray(predictions)
-        predictions = np.array(predictions).reshape(-1,n_classes)
+    if torch.is_tensor(probabilities):
+        probabilities = probabilities.detach().cpu().numpy()
+    elif not isinstance(probabilities, np.ndarray):       
+        probabilities = np.array(probabilities).reshape(-1,n_classes)
+        #probabilities = np.array(probabilities)
 
     # Check format of gt labels
     if torch.is_tensor(ground_truth):
         ground_truth = ground_truth.detach().cpu().numpy()
     elif not isinstance(ground_truth, np.ndarray):
-        ground_truth = np.array(ground_truth)
+        ground_truth = np.array(ground_truth).reshape(-1,n_classes)
 
     # Catch mismatch of classes and tasks (model dependent)
     if len(tasks) != n_classes:
@@ -147,7 +115,7 @@ def auroc(predictions, ground_truth, tasks, n_classes=14):
     auc_results = {}
     for i, task in enumerate(tasks):
         gt = ground_truth[:, i]
-        pred = predictions[:, i]
+        pred = probabilities[:, i]
         
         # Check if there are both positive and negative samples.
         # Here imbalances show up (e.g. fractures)
@@ -155,9 +123,22 @@ def auroc(predictions, ground_truth, tasks, n_classes=14):
             print(f"Warning: Only one class present in ground truth for {task}. Skipping ROC AUC computation.")
             auc_results[task] = float('nan')
         else:
-            auc_results[task] = metrics.roc_auc_score(y_true=gt, y_score=pred)
-
+            auc_results[task] = roc_auc_score(y_true=gt, y_score=pred)
     return auc_results
+
+def bootstrap_auc(y_true, y_score, n_bootstraps=1000):
+    rng = np.random.RandomState(42)
+    bootstrapped_scores = []
+    n = y_true.shape[0]
+    for _ in range(n_bootstraps):
+        idx = rng.randint(0, n, n)
+        if len(np.unique(y_true[idx])) < 2:
+            continue
+        score = roc_auc_score(y_true[idx], y_score[idx])
+        bootstrapped_scores.append(score)
+    lower = np.percentile(bootstrapped_scores, 2.5)
+    upper = np.percentile(bootstrapped_scores, 97.5)
+    return lower, upper
 
 
 def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metric="f1"):
