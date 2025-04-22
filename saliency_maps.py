@@ -166,6 +166,8 @@ def main():
     model = load_model(model_name=args.model, tasks=tasks, model_args=args)
     layer = get_target_layer(model=model)
 
+    # TODO: Define list or dict of heatmaps and within the loop fill them with the created heatmaps. 
+    # Compute class destinctiveness here or outside of loop.
     data_loader = prepare_data(args)
     for img, _ in data_loader:
         print("Start generating maps")
@@ -179,9 +181,10 @@ def main():
             save_path = os.path.join(output_dir, f"{args.model}/{target_name}.png")
             print("Save path:", save_path)
             save_heatmap(fig, save_path)
-
-    print("********** Finished saliency_maps script **********")
     
+    
+
+    print("********** Finished saliency_maps script **********")   
 
 
 if __name__ == "__main__":
