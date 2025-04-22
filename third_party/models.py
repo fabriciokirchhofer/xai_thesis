@@ -4,6 +4,9 @@ import torch.nn.functional as F
 
 from torchvision import models
 
+# Added by Fabricio 22.04.2025
+from torchvision.models import DenseNet121_Weights, ResNet152_Weights
+
 
 class PretrainedModel(nn.Module):
     """Pretrained model, either from Cadene or TorchVision."""
@@ -87,7 +90,11 @@ class TorchVisionModel(PretrainedModel):
         self.tasks = tasks
         self.model_uncertainty = model_args.model_uncertainty
 
-        self.model = model_fn(pretrained=model_args.pretrained)
+        # Was before: self.model = model_fn(pretrained=model_args.pretrained)
+        if model_args.model == 'DenseNet121':
+                self.model = model_fn(weights=DenseNet121_Weights.IMAGENET1K_V1)
+        elif model_args.model == 'ResNet152':
+                self.model = model_fn(weights=ResNet152_Weights.IMAGENET1K_V1)
         self.pool = nn.AdaptiveAvgPool2d(1)
 
         if model_args.model == 'DenseNet121':
