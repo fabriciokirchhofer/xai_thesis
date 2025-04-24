@@ -1,15 +1,213 @@
 from sklearn import metrics
 from sklearn.metrics import f1_score, auc, roc_curve
 from sklearn.metrics import roc_auc_score
+from captum.attr import LayerGradCam
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import pandas as pd
+import torch.nn.functional as F
 
 
 
+#***********************************************
 #******************** Utils ********************
-#******************** preprocessing ********************
+#***********************************************
+
+
+
+
+#---------------------------------------------------
+# ************* Generate Saliency maps *************
+#---------------------------------------------------
+def get_target_layer(model:torch.nn.Module, layer_name:str=None)->torch.nn.Conv2d:
+    """
+    Retrieve the target convolutional layer for Grad-CAM.
+    Args:
+        model (torch.nn.Module): Input model for which the specific layer shall be retrieved. By default DenseNet121.
+        layer (str, optional): The layer which shall be retrieved. By default -1 to fit DenseNet121.
+    Return:
+        Specified layer of model for Grad-CAM.
+    """
+    # If specific layer name (str) is provided, try to retrieve:
+    if layer_name:
+        try:
+            target_layer = getattr(model, layer_name)
+            return target_layer
+        except AttributeError:
+            print(f"Warning: Model has no attribute '{layer_name}'. Proceeding to auto-detect a convolutional layer.")
+
+        # Auto-detect: Iterate through modules to find the last Conv2d layer.
+    target_layer = None
+    for idx, module in enumerate(model.modules()):
+        #print(f"Module nr {idx+1} is {module}")
+        if isinstance(module, torch.nn.Conv2d):
+            target_layer = module
+    if target_layer is None:
+        raise ValueError("Could not find a convolutional layer in the model.")
+    #print(f"passed module to LayerGradCam is: {target_layer}")
+    return target_layer # passed module for DenseNet121 is: Conv2d(128, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+
+
+def generate_gradcam_heatmap(model:torch.nn.Module, input_tensor:torch.Tensor, target_class:int, target_layer:torch.nn.Module)->np.ndarray:
+    """
+    Generate a Grad-CAM heatmap for the specified input and target class.
+    Args:
+        model (torch.nn.Module): The trained model.
+        input_tensor (torch.Tensor): Input image tensor preprocessed as required (batch size of 1 assumed).
+        target_class (int): Class index for which to compute the attribution.
+        target_layer (torch.nn.Module): The layer to target for Grad-CAM. 
+    Returns:
+        2D heatmap as a NumPy array.
+    """
+    grad_cam = LayerGradCam(model, target_layer)
+    attributions = grad_cam.attribute(input_tensor, target=target_class)
+    # Remove the batch dimension and convert to a NumPy array. If multi-channel, average them.
+    heatmap = attributions.squeeze().detach().cpu().numpy()
+    if heatmap.ndim == 3:
+        heatmap = heatmap.mean(axis=0)
+    return heatmap
+
+
+def process_heatmap(heatmap:np.ndarray, 
+                    target_size:tuple=(10, 10), 
+                    normalize:bool=False, 
+                    flatten:bool=False, 
+                    as_tensor:bool=False)->np.ndarray:
+    """
+    Upscale 2D heatmap to target size using bilinear interpolation.
+    Args:
+        heatmap (2D numpy array): Heatmap to be processed. E.g. 10x10 depnding on layer used to generate heatmap
+        target_size (Tuple): (height,width) for output resolution
+        normalize (bool): If True max-min normalization will be performed to move heatmap values into range of [0,1]. By default False.
+        flatten (bool): If True flattening operation will be performed to obtain vectorized latent layer heatmap. By default False.
+        as_tensor (bool): If True heatmap will be returnes as tensor, otherwise by default as numpy array.
+    Return:
+        Resized heatmap as numpy array.
+    """
+    # Convert heatmap to tensor with shape [1, 1, H, W]. Unsqueeze adds at dim 0 a tensor of size 1.
+    heatmap_tensor = torch.tensor(heatmap).unsqueeze(0).unsqueeze(0).float()
+    heatmap = F.interpolate(heatmap_tensor, size=target_size, mode='bilinear', align_corners=False)
+
+    if normalize:
+        heatmap = (heatmap - heatmap.min()) / (heatmap.max()-heatmap.min() + 1e-8)
+    if flatten:
+        heatmap = torch.flatten(heatmap)
+    if as_tensor:
+        return heatmap
+    else:
+        return heatmap.squeeze().numpy()    
+
+
+def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:float=0.3)->np.ndarray:
+    """
+    Overlay saliency map on original image.
+    Args:
+        original_img: Grayscale image as torch.tensor of size [batch_size, channels, hight, width]. Batch size must be 1 otherwise squeeze will not work
+        heatmap: saliency map as numpy array of shape (hight, width)
+        transparency: alpha value which matplotlib uses for blinding the saliency map
+    Return:
+        Overlay image as numpy array of shape (hight, width, channel).
+    """
+    # Normalize heatmap to [0, 1] using min-max scaling.
+    heatmap_norm = (heatmap - np.min(heatmap)) / (np.max(heatmap) - np.min(heatmap) + 1e-8)
+    
+    # will have shape [height, width, 4] (RGBA). Take only first three channels.
+    cmap = plt.get_cmap('jet')
+    colored_heatmap = cmap(heatmap_norm)[:, :, :3]
+    
+    # Convert original image from a tensor of shape [batch_size=1, 3, height, width]
+    # to a numpy array of shape [height, width, 3] and apply normalization
+    img = original_img.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    img = (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
+
+    overlay = (1 - alpha) * img + alpha * colored_heatmap
+    
+    # Clip final overlay to ensure the values are in [0, 1]. Avoid warning
+    overlay = np.clip(overlay, 0, 1)
+    return overlay
+
+
+def visualize_heatmap(heatmap, title:str = "Grad-CAM Heatmap")->plt.figure:
+    plt.imshow(heatmap, cmap='jet')
+    plt.title(title)
+    plt.colorbar()
+    # Return the current figure for further purposes 
+    fig = plt.gcf()
+    return fig
+
+
+def save_heatmap(fig:plt.Figure, save_path:str) -> None:
+    """
+    Save the matplotlib figure   
+    Args:
+        fig: The matplotlib figure to save.
+        save_path: The full file path where to save the figure.
+    """
+    fig.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+
+# -------------------------------------------------------------------
+# *********** Utility functions for class distinctiveness ***********
+# -------------------------------------------------------------------
+def compute_centroids(saliency_dict: dict) -> dict:
+    """
+    Compute the mean (centroid) vector for each class.
+    Args:
+        saliency_dict: mapping class_name -> list of 1D torch.Tensor vectors
+    Returns:
+        centroids: mapping class_name -> 1D torch.Tensor (mean vector)
+    """
+    centroids = {}
+    for cls, vecs in saliency_dict.items():
+        stack = torch.stack(vecs, dim=0)  # shape: (N_c, D)
+        centroids[cls] = stack.mean(dim=0)
+    return centroids
+
+
+def compute_distinctiveness(centroids: dict) -> dict:
+    """
+    Compute per-class distinctiveness scores via cosine similarity.
+    D(c) = 1 - avg_{c' != c} cos(mu_c, mu_c').
+    """
+    class_names = list(centroids.keys())
+    C = len(class_names)
+    mat = torch.stack([centroids[c] for c in class_names], dim=0)
+    mat_norm = mat / (mat.norm(dim=1, keepdim=True) + 1e-8)
+    cos_sim = mat_norm @ mat_norm.t()  # shape (C, C)
+
+    distinctiveness = {}
+    for i, c in enumerate(class_names):
+        others = [j for j in range(C) if j != i]
+        mean_sim = cos_sim[i, others].mean().item()
+        distinctiveness[c] = 1.0 - mean_sim
+    return distinctiveness
+
+
+def plot_distinctiveness(distinctiveness: dict, save_path: str = None) -> plt.Figure:
+    """
+    Plot a bar chart of per-class distinctiveness scores.
+    """
+    classes = list(distinctiveness.keys())
+    values = [distinctiveness[c] for c in classes]
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.bar(classes, values)
+    ax.set_ylabel('Distinctiveness')
+    ax.set_xticks(range(len(classes)))
+    ax.set_xticklabels(classes, rotation=45, ha='right')
+    ax.set_title('Per-Class Distinctiveness')
+    fig.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+    return fig
+
+
+# --------------------------------------------------------------
+#***************** Preprocessing and inference *****************
+# --------------------------------------------------------------
 def remove_prefix(dict, prefix):
     """
     Function to remove additional prefix created while saving the model
@@ -190,8 +388,7 @@ def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metri
 
 def threshold_based_predictions(probs, thresholds, tasks):
     """
-    Applies task-specific thresholds to probabilities to generate binary predictions.
-    
+    Applies task-specific thresholds to probabilities to generate binary predictions.  
     Args:
         probs (Tensor): shape (N, C), predicted probabilities
         thresholds (float or dict): single threshold or per-task threshold dict
@@ -209,11 +406,10 @@ def threshold_based_predictions(probs, thresholds, tasks):
     return predictions
 
 
-# ********************************* PLOTS *********************************
-
+# -------------------------------------------------------------------------
+# ******************************* ROC PLOTS *******************************
+# -------------------------------------------------------------------------
 def plot_roc(predictions, ground_truth, tasks, n_classes=14):
-        
-
         """
         Computes per-class AUROC using continuous probabilities.
         Args:
@@ -221,11 +417,8 @@ def plot_roc(predictions, ground_truth, tasks, n_classes=14):
             ground_truth (array like): of shape (n_samples,) or (n_samples, n_classes)
             tasks (list of str): Names for each class/task.
             n_classes (int): must match the number of classes. By default 14
-
         """
-        print("Entered function plot")
-
-
+        print("Entered plotting function")
         # Convert to numpy arrays if necessary
         if torch.is_tensor(predictions):
             predictions = predictions.detach().cpu().numpy()

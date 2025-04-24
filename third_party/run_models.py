@@ -11,26 +11,25 @@ import csv
 import pandas as pd
 
 
-# Calculated average AUROC over atelectasis, cardiomegaly, consolidation, edema, and pleural effusion = 0.8341 (val)
-ckpt_d_ignore_1 = 'pretrainedmodels/densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt' # torch.Size([14, 1024])
 
+
+path_dir = os.path.expanduser('~/repo/xai_thesis/third_party/pretrainedmodels/')
+# Calculated on validation set average AUROC over atelectasis, cardiomegaly, consolidation, edema, and pleural effusion
 # DenseNet121
-debug_path_to_ckpt_d_ignore_1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt' # AUROC during val = 0.8245074203947084
-debug_path_to_ckpt_d_ignore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_2/epoch=2-chexpert_competition_AUROC=0.88.ckpt' # AUROC during val = 0.8560705112383094
-debug_path_to_ckpt_d_ignore_3 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_3/epoch=2-chexpert_competition_AUROC=0.88.ckpt' # AUROC during val = 0.854155053128039
+ckpt_d_ignore_1 = os.path.join(path_dir, 'densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt') # AUROC = 0.8245074203947084 # torch.Size([14, 1024])
+ckpt_d_ignore_2 = os.path.join(path_dir, 'densenet121/uncertainty/densenet_ignore_2/epoch=2-chexpert_competition_AUROC=0.88.ckpt') # AUROC = 0.8560705112383094
+ckpt_d_ignore_3 = os.path.join(path_dir, 'densenet121/uncertainty/densenet_ignore_3/epoch=2-chexpert_competition_AUROC=0.88.ckpt') # AUROC = 0.854155053128039
 
 # Resnet152
-debug_path_to_ckpt_r_ignore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_2/epoch=2-chexpert_competition_AUROC=0.86.ckpt' # AUROC during val = 0.7969021549350594
-debug_path_to_ckpt_r_ignore_3_ep2_1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.86.ckpt' # AUROC during val = 0.8141815614997918
-debug_path_to_ckpt_r_ignore_3x_ep2_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.87.ckpt' # AUROC during val = 0.8207077659558035
-debug_path_to_ckpt_r_ignore_3x_ep1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=1-chexpert_competition_AUROC=0.87.ckpt' # AUROC during val = 0.8258944682967464
-
+ckpt_r_ignore_2 = os.path.join(path_dir, 'resnet152/resnet_ignore_2/epoch=2-chexpert_competition_AUROC=0.86.ckpt') # AUROC = 0.7969021549350594
+ckpt_r_ignore_3_ep2_1 = os.path.join(path_dir, 'resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.86.ckpt') # AUROC = 0.8141815614997918
+ckpt_r_ignore_3x_ep2_2 = os.path.join(path_dir, 'resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.87.ckpt') # AUROC = 0.8207077659558035
+ckpt_r_ignore_3x_ep1 = os.path.join(path_dir, 'resnet152/resnet_ignore_3/epoch=1-chexpert_competition_AUROC=0.87.ckpt') # AUROC = 0.8258944682967464
 
 # Inception V4
-debug_path_to_ckpt_i_ignore_1 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_1/epoch=2-chexpert_competition_AUROC=0.85.ckpt' # AUROC during val = 0.4681767038450782 (with inception preprocessing otherwise AUROC = 0.4972145074342835)
-debug_path_to_ckpt_i_ignore_2 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_2/epoch=2-chexpert_competition_AUROC=0.86_v2.ckpt' # AUROC during val =  0.47889381692531796 (with inception preprocessing otherwise AUROC = 0.4492819192735242)
-debug_path_to_ckpt_i_ignore_3 = '/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_3/epoch=2-chexpert_competition_AUROC=0.85.ckpt' # AUROC during val = 0.4928516042460034 (with inception preprocessing otherwise  AUROC = 0.41869342379579316)
-
+ckpt_i_ignore_1 = os.path.join(path_dir, 'inceptionv4/inception_ignore_1/epoch=2-chexpert_competition_AUROC=0.85.ckpt') # AUROC = 0.4681767038450782 (with inception preprocessing otherwise AUROC = 0.4972145074342835)
+ckpt_i_ignore_2 = os.path.join(path_dir, 'inceptionv4/inception_ignore_2/epoch=2-chexpert_competition_AUROC=0.86_v2.ckpt') # AUROC =  0.47889381692531796 (with inception preprocessing otherwise AUROC = 0.4492819192735242)
+ckpt_i_ignore_3 = os.path.join(path_dir, 'inceptionv4/inception_ignore_3/epoch=2-chexpert_competition_AUROC=0.85.ckpt') # AUROC = 0.4928516042460034 (with inception preprocessing otherwise  AUROC = 0.41869342379579316)
 
 
 # Parse arguments -> Argumente Zerlegung
@@ -39,15 +38,18 @@ def parse_arguments():
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
-    parser.add_argument('--model', type=str, default='ResNet152', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=debug_path_to_ckpt_r_ignore_3x_ep2_2, help='Path to checkpoint file')
+    parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
+    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
     parser.add_argument('--tune_thresholds', type=bool, default=False, help='If True, find optimal per-class thresholds using F1 score. Will save it.')
-    parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')
-    parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
+    parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')   
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
+
+    parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
+    parser.add_argument('--save_saliency', type=bool, default=False, help='Process the GradCam heatmaps and store overlay of saliency map and original img.')
+
     return parser.parse_args()
 
 def get_model(model, tasks, model_args):
