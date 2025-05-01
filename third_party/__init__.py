@@ -23,6 +23,10 @@ from third_party.utils import (
     compute_accuracy, 
     comput_youden_idx, 
     compute_f1_score,
+    class_distinctiveness,
+    sum_up_distinctiveness,
+    normalize_distinctiveness,
+    plot_distinctiveness_boxplots
     )
 
 # Define package-level variables

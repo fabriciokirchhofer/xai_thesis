@@ -4,9 +4,11 @@ from sklearn.metrics import roc_auc_score
 from captum.attr import LayerGradCam
 import numpy as np
 import torch
+import os
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch.nn.functional as F
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 
@@ -147,11 +149,113 @@ def save_heatmap(fig:plt.Figure, save_path:str) -> None:
     fig.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
-
-
 # -------------------------------------------------------------------
 # *********** Utility functions for class distinctiveness ***********
 # -------------------------------------------------------------------
+def class_distinctiveness(saliency_dict:dict)->dict:
+    """
+    Function to calculate pair-wise class distinctiveness based on cosine similarity
+    Args:
+        saliency_dict (dict): Dictionary in structure of dict[str, list[np.ndarray]] containing class_names and flattened heatmaps.
+    Return:
+        distinctiveness (dict): Pair-wise class distinctiveness in structure of dict[tuple(str,str), float32] containing pair-wise class names and dist. value.
+    """
+    class_names = list(saliency_dict.keys())
+    stacked_vectors = np.stack([np.array(saliency_dict[name]).ravel() for name in class_names], axis=0)
+    #print(f"***\nShape of stacked vectors: {stacked_vectors.shape}\ntype of stacked vectors {type(stacked_vectors)}")
+    similarity_matrix = cosine_similarity(stacked_vectors)
+
+    distinctiveness = {}
+    for i in range(len(class_names)):
+        for j in range(i+1, len(class_names)):
+            pair = (class_names[i], class_names[j])
+            distinctiveness[pair] = similarity_matrix[i, j]
+    return distinctiveness
+
+def sum_up_distinctiveness(collection:dict, new_scores)->dict:
+    """
+    Function to gather pair-wise distinctiveness of several images in dictionary.
+    Args: 
+        collection (dict): Pair-wise class distinctiveness in structure of dict[tuple(str,str), float32] containing pair-wise class names and dist. value.
+        new_scores (dict): Pair-wise class distinctiveness in structure of dict[tuple(str,str), float32] containing pair-wise class names and dist. value.
+    Return:
+        collection (dict): Collection of pair-wise class distinctiveness in structure of dict[tuple(str,str), list[float32]] containing pair-wise class names and list of dist. values.
+    """
+    for pair, val in new_scores.items():
+        # If key called pair already exists it returns collection[pair], if not yet existing it creates new key with empty list.
+        collection.setdefault(pair, []).append(val)
+    return collection
+
+def normalize_distinctiveness(distinctiveness_collection: dict)->dict:
+    """
+    Min–max normalizes all values across every class-pair in the collection.
+    Args:
+        distinctiveness_collection: dict[tuple(str,str), list[float]]
+            List of raw distinctiveness scores for each class-pair.
+    Returns:
+        dict[tuple(str,str), list[float]] of the same shape, where each score
+        has been transformed to (x - global_min)/(global_max - global_min).
+        If all values are equal or collection is empty, returns zeros or empty.
+    """
+    all_vals = []
+    for vals in distinctiveness_collection.values():
+        all_vals.extend(vals)
+    min_val, max_val = min(all_vals), max(all_vals)
+    span = max_val -min_val
+
+    normalized = {}
+    for pair, vals in distinctiveness_collection.items():
+        if span > 0:
+            normalized[pair] = [(v - min_val) / span for v in vals]
+        else:
+            # avoid division by zero if all values are identical
+            normalized[pair] = [0.0 for _ in vals]
+    return normalized
+
+
+def plot_distinctiveness_boxplots(distinctiveness_collection: dict,
+                                  normalize: bool = False,
+                                  save_path: str = None)->plt.Figure:
+    """
+    Plots a boxplot for each class-pair’s distinctiveness distribution and optionally saves it.
+    Args:
+        distinctiveness_collection: dict[tuple(str,str) -> list[float]]
+        normalize: whether to min–max normalize before plotting.
+        save_path: full file path where the figure will be saved.
+            If provided, the directory will be created if needed.
+    Returns:
+        The matplotlib Figure object for further customization or saving.
+    """
+    # choose raw or normalized data
+    data = normalize and normalize_distinctiveness(distinctiveness_collection) or distinctiveness_collection
+
+    pairs = list(data.keys())
+    values = [data[pair] for pair in pairs]
+
+    fig, ax = plt.subplots()
+    ax.boxplot(values, labels=[f"{a}-{b}" for a, b in pairs])
+    title = "Normalized Distinctiveness" if normalize else "Distinctiveness"
+    ax.set_title(f"{title} per Class Pair")
+    ax.set_xlabel("Class Pair")
+    ax.set_ylabel("Value")
+    ax.grid(visible=True)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    fig.tight_layout()
+
+    # Save if requested
+    if save_path:
+        directory = os.path.dirname(save_path)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+        fig.savefig(save_path, dpi=300)
+
+    return fig
+
+
+
+# ***************************** Initial computation which does not cosine similarity but used centroid based distances ****************************
+# In each loop it stacks the vectors of each cls together (class-wise) 
+# and then calculates the mean and inserts it into the dictionary centroids (class-wise)
 def compute_centroids(saliency_dict: dict) -> dict:
     """
     Compute the mean (centroid) vector for each class.
@@ -161,11 +265,13 @@ def compute_centroids(saliency_dict: dict) -> dict:
         centroids: mapping class_name -> 1D torch.Tensor (mean vector)
     """
     centroids = {}
-    for cls, vecs in saliency_dict.items():
-        stack = torch.stack(vecs, dim=0)  # shape: (N_c, D)
+    cnt = 0
+    for cls, vecs in saliency_dict.items():     
+        stack = torch.stack(vecs, dim=0)  # shape: (N_c, D) Number of saliency maps (234) and Dimension of vector (100)
         centroids[cls] = stack.mean(dim=0)
+        print(f"Stack round {cnt}.\nstack size:{stack.size()}\ncentroids:{centroids}")
+        cnt += 1
     return centroids
-
 
 def compute_distinctiveness(centroids: dict) -> dict:
     """

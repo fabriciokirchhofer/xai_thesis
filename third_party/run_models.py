@@ -1,7 +1,6 @@
 import argparse
 import os
 import torch
-import torch.nn.functional as F
 from torchvision import transforms
 # python -m third_party.run_models
 import third_party.utils as utils
@@ -39,7 +38,7 @@ def parse_arguments():
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
     parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
+    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_3, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
@@ -48,8 +47,7 @@ def parse_arguments():
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--save_saliency', type=bool, default=False, help='Process the GradCam heatmaps and store overlay of saliency map and original img.')
-
+    parser.add_argument('--saliency', type=str, default='get', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser.parse_args()
 
 def get_model(model, tasks, model_args):

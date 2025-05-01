@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torchvision.io import read_image, ImageReadMode
 
-import pretrainedmodels
+# import pretrainedmodels
 
 
 

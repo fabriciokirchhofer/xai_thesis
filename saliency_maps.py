@@ -9,15 +9,16 @@ from third_party import (
     load_checkpoint, 
     prepare_data, 
     extract_study_id,
-    compute_centroids,
-    compute_distinctiveness,
-    plot_distinctiveness,
     get_target_layer,
     generate_gradcam_heatmap,
     process_heatmap,
     overlay_heatmap_on_img,
     visualize_heatmap,
-    save_heatmap)
+    save_heatmap,
+    class_distinctiveness,
+    sum_up_distinctiveness,
+    #normalize_distinctiveness, # Called in plot_distinctiveness_boxplots if normalize=True
+    plot_distinctiveness_boxplots)
 
 # To access all the default arguments from run_models.pys
 args = parse_arguments()
@@ -44,9 +45,7 @@ def load_model(model_name:str='DenseNet121', tasks:list=None, model_args=None)->
 def main():
     print("\n************************ Get started with saliency maps script ************************")
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device for XAI:", device)
-
+    # Some general definitions
     tasks = [
     'No Finding', 'Enlarged Cardiomediastinum' ,'Cardiomegaly', 
     'Lung Opacity', 'Lung Lesion' , 'Edema' ,
@@ -60,65 +59,97 @@ def main():
         'Atelectasis':8,
         'Pleaural Effusion':10
         }
-    
-    # Define output directory and ensure it exists.
-    output_dir = os.path.expanduser('~/repo/xai_thesis/saliency_maps/')
-    os.makedirs(output_dir, exist_ok=True)
 
+    # Storage locations
+    map_dir = os.path.expanduser('~/repo/xai_thesis/saliency_maps/')
+    os.makedirs(map_dir, exist_ok=True)
+
+    cache_dir = os.path.expanduser('~/repo/xai_thesis/heatmap_cache')
+    man_path = 'ckpt_d_ignore_3'
+    normalize = True
+    cache_dir = os.path.join(cache_dir, args.model, man_path)
+    os.makedirs(cache_dir, exist_ok=True)
+
+
+    # Load model, img data, and access layer to generate saliency maps
     model = load_model(model_name=args.model, tasks=tasks, model_args=args)
     layer = get_target_layer(model=model)
-
-    if args.save_saliency:
-        df = extract_study_id(mode=args.run_test)
-        ids = df['study_id'].str.split('/', expand=True)[1] 
-        
     data_loader = prepare_data(args)
     saliency_dict = defaultdict(list)
+    distinctiveness_collection = {}
 
+    # Access the patient IDs when storing saliency maps (heatmap overlay with original iamge)
+    df = extract_study_id(mode=args.run_test)
+    ids = df['study_id'].str.split('/', expand=True)[1] 
 
+    # Loop over img data
     for i, (img, _) in enumerate(data_loader):
-        #img = img.to(device)
-        if args.save_saliency:
-            try:
-                id = ids[i]
-            except Warning:
-                print(f"No saliency maps to be stored")
+        id = ids[i]
 
+        # Loop over tasks
         for target_name, idx in target_class_dict.items():
-            heatmap = generate_gradcam_heatmap(model=model, 
-                                               input_tensor=img, 
-                                               target_class=idx, 
-                                               target_layer=layer)  
-            #print(f"Size of heatmap is {heatmap.shape}")
-            if args.save_saliency:
-                # Process and save GradCam overlay to original img.
-                upscaled_heatmap = process_heatmap(heatmap=heatmap, target_size=(320,320))
-                overlayed_imgs = overlay_heatmap_on_img(original_img=img, heatmap=upscaled_heatmap, alpha=0.4)
-                fig = visualize_heatmap(heatmap=overlayed_imgs, title=(f"Grad-CM for {id} on {target_name}"))
-                save_path = os.path.join(output_dir, f"{args.model}/{target_name}_{id}.png")
-                #print("Save path:", save_path)
-                save_heatmap(fig, save_path)
-            
+            cache_map_path = os.path.join(cache_dir, f"{id}_{target_name}.npz")
 
+            # If already existing load heatmaps otherwise compute them
+            if args.saliency=='get':
+                # Load pre-computed heatmaps
+                with np.load(cache_map_path) as dict_lookup:
+                    heatmap = dict_lookup['heatmap']
+            elif args.saliency=='compute':
+                heatmap = generate_gradcam_heatmap(model=model, 
+                                                input_tensor=img, 
+                                                target_class=idx, 
+                                                target_layer=layer)
+                np.savez_compressed(cache_map_path, heatmap=heatmap)  
 
+            # If images shall be computed first check if already existing, otherwise compute.
+            elif args.saliency=='save_img':
+                if os.path.exists(cache_map_path):
+                    with np.load(cache_map_path) as d:
+                        heatmap = d['heatmap']
+                else:
+                    heatmap = generate_gradcam_heatmap(
+                        model=model,
+                        input_tensor=img,
+                        target_class=idx,
+                        target_layer=layer
+                    )
+                    np.savez_compressed(cache_map_path, heatmap=heatmap)
+                try:
+                    # Process and save GradCam overlay to original img.
+                    upscaled_heatmap = process_heatmap(heatmap=heatmap, target_size=(320, 320))
+                    overlayed_imgs = overlay_heatmap_on_img(original_img=img, heatmap=upscaled_heatmap, alpha=0.4)
+                    fig = visualize_heatmap(heatmap=overlayed_imgs, title=(f"Grad-CM for {id} on {target_name}"))
+                    save_path = os.path.join(map_dir, f"{args.model}/{target_name}_{id}.png")
+                    #print("Save path:", save_path)
+                    save_heatmap(fig, save_path)
+                except LookupError:
+                    print("Heatmap not existing. Make sure it is available in correct location.")
+            else:
+                raise ValueError("Unknown saliency mode.")
 
             heatmap_vector = process_heatmap(heatmap=heatmap, 
                                       target_size=(10, 10), 
                                       normalize=True, 
                                       flatten=True,
-                                      as_tensor=True)
-            saliency_dict[target_name].append(heatmap_vector.cpu())
+                                      as_tensor=False)
+            
+            # Every round append the heatmap_vector to the corresponding target_name (phathology)
+            saliency_dict[target_name].append(heatmap_vector)
+        
+        distinctiveness = class_distinctiveness(saliency_dict)
+        distinctiveness_collection = sum_up_distinctiveness(distinctiveness_collection, distinctiveness)
+    
+    save_dir = os.path.expanduser(f"~/repo/xai_thesis/distinctiveness/{args.model}")
+    save_path = os.path.join(save_dir, "distinctiveness_boxplot.png")
+    fig = plot_distinctiveness_boxplots(distinctiveness_collection,
+                                        normalize=normalize,
+                                        save_path=save_path)
 
-            centroids = compute_centroids(saliency_dict)
-            distinctiveness = compute_distinctiveness(centroids)
 
-            print("\nPer-class distinctiveness scores:")
-            for cls, score in distinctiveness.items():
-                print(f"  {cls}: {score:.4f}")
-
-            fig = plot_distinctiveness(distinctiveness,
-                                        save_path=os.path.join(output_dir, 'distinctiveness.png'))
-            print(f"Saved distinctiveness plot to {output_dir}/distinctiveness.png")
+    # print("Pairwise cosine‐similarities (distinctiveness):")
+    # for (c1, c2), score in distinctiveness_collection.items():
+    #     print(f"  {c1:>7} vs {c2:<7} → {score}")
                
     print("********** Finished saliency_maps script **********")   
 
