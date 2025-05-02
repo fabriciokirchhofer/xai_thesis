@@ -152,6 +152,7 @@ def main():
     #     print(f"  {c1:>7} vs {c2:<7} → {score}")
                
     print("********** Finished saliency_maps script **********")   
+    print("Added this test for merge into main.")
 
 
 if __name__ == "__main__":
