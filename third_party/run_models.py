@@ -3,13 +3,16 @@ import os
 import torch
 from torchvision import transforms
 # python -m third_party.run_models
-import third_party.utils as utils
-import third_party.dataset as dataset
-import third_party.models as models
+# import third_party.utils as utils
+# import third_party.dataset as dataset
+# import third_party.models as models
+
+import utils
+import dataset
+import models
+
 import csv
 import pandas as pd
-
-
 
 
 path_dir = os.path.expanduser('~/repo/xai_thesis/third_party/pretrainedmodels/')
