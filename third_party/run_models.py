@@ -3,13 +3,13 @@ import os
 import torch
 from torchvision import transforms
 # python -m third_party.run_models
-# import third_party.utils as utils
-# import third_party.dataset as dataset
-# import third_party.models as models
+import third_party.utils as utils
+import third_party.dataset as dataset
+import third_party.models as models
 
-import utils
-import dataset
-import models
+# import utils
+# import dataset
+# import models
 
 import csv
 import pandas as pd
@@ -53,16 +53,35 @@ def parse_arguments():
     parser.add_argument('--saliency', type=str, default='get', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser.parse_args()
 
-def get_model(model, tasks, model_args):
+def get_model(model:str, tasks:list, model_args):
+    """
+    Factory to return an XAI model by name.
+    Args:
+        model_name (str): Name of the model architecture.
+        tasks (list):     List of target class names.
+        model_args: Parsed arguments namespace.
+    Returns:
+        An instance of the requested BaseModelXAI subclass.
+    Raises:
+        ValueError: If `model_name` is not recognized.
+    """
     # Mapping to choose the right model class
     model_map = {
         'DenseNet121': models.DenseNet121,
         'ResNet152': models.ResNet152,
         'Inceptionv4': models.Inceptionv4
     }
-    # Return value of dict model_map {key: value}
-    # models.DenseNet121 will only be used if no valid or recognized value is passed in the model_args
-    model_class = model_map.get(model, models.DenseNet121)
+
+    key = model
+    print(f"The keys: {key}")
+    if key not in model_map:
+        valid = ', '.join(sorted(model_map.keys()))
+        raise ValueError(
+            f"Unknown model '{model}'."
+            f"Please choose one of: {valid}"
+        )
+
+    model_class = model_map[key]
     return model_class(tasks=tasks, model_args=model_args)
 
 
@@ -105,7 +124,7 @@ def prepare_data(model_args):
     # train_std = torch. tensor([0.2914, 0.2914, 0.2914])
 
     train_mean = torch.tensor([0.5032, 0.5032, 0.5032])
-    train_std = torch. tensor([0.2919, 0.2919, 0.2919])
+    train_std = torch.tensor([0.2919, 0.2919, 0.2919])
     size = (320, 320)
 
     # if model_args.model == 'Inceptionv4':
@@ -117,7 +136,7 @@ def prepare_data(model_args):
 
     # Define inference transformation pipeline for the inception v4 architecture
     inference_transform = transforms.Compose([
-        transforms.ConvertImageDtype(torch.float),
+        transforms.ConvertImageDtype(dtype=torch.float),
         transforms.Resize(size), # Resizing based of requirements for Inception v4
         transforms.Normalize(mean=train_mean.tolist(), std=train_std.tolist())                
         ])
@@ -180,7 +199,7 @@ def model_run(model, data_loader):
     return all_logits
 
 
-def eval_model(model_args, data_loader, tasks, logits):
+def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=True):
     """
     TODO: define args and returns
     Evaluate the model's performance using logits and ground truth from data_loader. 
@@ -197,25 +216,27 @@ def eval_model(model_args, data_loader, tasks, logits):
     print("****Start evaluation mode****")
     probs = torch.sigmoid(logits).cpu()
 
-    #******************** get max prob per view start ********************
-    df = utils.extract_study_id(mode=model_args.run_test)
-    #print("Current df:", df.head())
+    if only_max_prob_view:
+        print(f"Get per patient only view with highest probability.")
+        #******************** get max prob per view start ********************
+        df = utils.extract_study_id(mode=model_args.run_test)
+        #print("Current df:", df.head())
 
-    # Convert probs and gt_labels to df
-    prob_df = pd.DataFrame(probs.detach().cpu().numpy(), columns=tasks)
-    gt_df   = pd.DataFrame(gt_labels.detach().cpu().numpy(), columns=tasks)
+        # Convert probs and gt_labels to df
+        prob_df = pd.DataFrame(probs.detach().cpu().numpy(), columns=tasks)
+        gt_df   = pd.DataFrame(gt_labels.detach().cpu().numpy(), columns=tasks)
 
-    # Match each row of predictions and gt to the df from the csv file
-    prob_df['study_id'] = df['study_id']
-    gt_df['study_id'] = df['study_id']
+        # Match each row of predictions and gt to the df from the csv file
+        prob_df['study_id'] = df['study_id']
+        gt_df['study_id'] = df['study_id']
 
-    # Group by study_id and take only the maximum predicted probability per study.
-    agg_prob = prob_df.groupby('study_id').max()
-    agg_gt = gt_df.groupby('study_id').max()
- 
-    probs = torch.tensor(agg_prob.values)
-    gt_labels   = torch.tensor(agg_gt.values)
-    #******************** get max prob per view end ********************
+        # Group by study_id and take only the maximum predicted probability per study.
+        agg_prob = prob_df.groupby('study_id').max()
+        agg_gt = gt_df.groupby('study_id').max()
+    
+        probs = torch.tensor(agg_prob.values)
+        gt_labels   = torch.tensor(agg_gt.values)
+        #******************** get max prob per view end ********************
 
     if not model_args.run_test:
         predictions = utils.threshold_based_predictions(probs, model_args.sigmoid_threshold, tasks)
