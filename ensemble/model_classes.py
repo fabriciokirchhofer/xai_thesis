@@ -1,12 +1,7 @@
-
 import torch
-import numpy as np
-import os
-
 from torchvision import transforms
 from abc import ABC, abstractmethod
-
-from third_party import utils, run_models, dataset
+from third_party import run_models, dataset, utils
 
 args = run_models.parse_arguments()
 
@@ -42,7 +37,7 @@ class BaseModelXAI(ABC):
         pass
 
     def _load_weights(self):
-        """Load checkpoint weights into model."""
+        """Load checkpoint weights into model and set it to evaluation mode - NO training."""
         self.model = run_models.load_checkpoint(self.model, self.model_args.ckpt)
         self.model.eval()
 
@@ -93,60 +88,55 @@ class BaseModelXAI(ABC):
 
 
     def run_class_model(self) -> torch.Tensor:
-
         """Runs the model on input images and returns logits."""
-
         if self.model is None or self.data_loader is None:
             raise ValueError("Model and data_loader must be initialized before calling run_class_model.")
         
         return run_models.model_run(model=self.model, data_loader=self.data_loader)
-        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.model.to(device)
-        # images = images.to(device)
-        # with torch.no_grad():
-        #     logits = self.model(images)
-        # return logits
 
-    # def predict(self, images: torch.Tensor, apply_sigmoid: bool = True) -> torch.Tensor:
-    #     """Returns probabilities by applying sigmoid to logits if specified."""
-    #     logits = self.model_run(images)
-    #     return torch.sigmoid(logits) if apply_sigmoid else logits
 
-    # def compute_saliency(self, image: torch.Tensor, target_class: int, image_id: str) -> np.ndarray:
-    #     """
-    #     Retrieves or computes Grad-CAM saliency map for a given image and target class.
+    def predict(self, images: torch.Tensor, apply_sigmoid: bool = True) -> torch.Tensor:
+        """
+        Runs the model on a batch of images and returns sigmoid probabilities.
+        """
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"device in BaseModelXAI for {args.model} is {device}")
+        self.model.to(device)
+        self.model.eval()
+        images = images.to(device)
 
-    #     Args:
-    #         image (torch.Tensor): Image tensor of shape [1, C, H, W].
-    #         target_class (int): Index of the class to compute saliency for.
-    #         image_id (str): Unique identifier used for cache lookup.
+        with torch.no_grad():
+            logits = self.model(images)
+            if apply_sigmoid:
+                return torch.sigmoid(logits)
+            else:
+                return logits
 
-    #     Returns:
-    #         np.ndarray: Saliency heatmap.
-    #     """
-    #     model_type = self.model_args.model
-    #     man_path = os.path.basename(os.path.dirname(self.model_args.ckpt))
-    #     cache_dir = os.path.expanduser(f"~/repo/xai_thesis/heatmap_cache/{model_type}/{man_path}")
-    #     os.makedirs(cache_dir, exist_ok=True)
 
-    #     cache_path = os.path.join(cache_dir, f"{image_id}_{self.tasks[target_class]}.npz")
-    #     if self.model_args.saliency == 'get' and os.path.exists(cache_path):
-    #         return np.load(cache_path)['heatmap']
+class DenseNet121Model(BaseModelXAI):
+    def _init_model(self):
+        """Initialize the DenseNet121 model using existing factory logic."""
+        self.model = run_models.get_model(model='DenseNet121', tasks=self.tasks, model_args=self.model_args)
 
-    #     layer = get_target_layer(self.model, self.gradcam_target_layer)
-    #     heatmap = generate_gradcam_heatmap(self.model, image, target_class, layer)
+class ResNet152Model(BaseModelXAI):
+    def _init_model(self):
+        """Initialize the ResNet152 model using existing factory logic."""
+        self.model = run_models.get_model(model='ResNet152', tasks=self.tasks, model_args=self.model_args)
 
-    #     if self.model_args.saliency in ['compute', 'save_img']:
-    #         np.savez_compressed(cache_path, heatmap=heatmap)
 
-    #     return heatmap
-
-    # def get_saliency_vector(self, heatmap: np.ndarray, size=(10, 10)) -> np.ndarray:
-    #     """Processes heatmap into a flattened, normalized vector."""
-    #     return process_heatmap(
-    #         heatmap=heatmap,
-    #         target_size=size,
-    #         normalize=True,
-    #         flatten=True,
-    #         as_tensor=False
-    #     )
+def get_model_wrapper(model_name: str):
+    """
+    Returns the BaseModelXAI subclass object corresponding to the given architecture name.
+    A wrapper that maps from the model name via args_model.model to the subclass object instantiater.
+    """
+    mapping = {
+        'DenseNet121': DenseNet121Model,
+        'ResNet152': ResNet152Model,
+        # add other model wrappers here, for example:
+        # 'ResNet101': ResNet101Model,
+        # 'Inceptionv3': Inceptionv3Model,
+    }
+    try:
+        return mapping[model_name]
+    except KeyError:
+        raise ValueError(f"Unknown model wrapper '{model_name}'. Available: {list(mapping.keys())}")

@@ -3,13 +3,17 @@ import os
 import torch
 from torchvision import transforms
 # python -m third_party.run_models
-import third_party.utils as utils
-import third_party.dataset as dataset
-import third_party.models as models
+# import third_party.utils as utils
+# import third_party.dataset as dataset
+# import third_party.models as models
 
 # import utils
 # import dataset
 # import models
+
+from third_party import utils
+from third_party import dataset
+from third_party import models
 
 import csv
 import pandas as pd
@@ -35,8 +39,8 @@ ckpt_i_ignore_3 = os.path.join(path_dir, 'inceptionv4/inception_ignore_3/epoch=2
 
 
 # Parse arguments -> Argumente Zerlegung
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Models exploration")
+def create_parser():
+    parser = argparse.ArgumentParser(description="Script settings to run XAI model ensemble")
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
@@ -49,8 +53,13 @@ def parse_arguments():
     parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')   
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
-    parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
+    parser.add_argument('--plot_roc', type=bool, default=True, help='Plot the ROC curves for each task. Default false.')
     parser.add_argument('--saliency', type=str, default='get', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    return parser
+
+# Thin wrapper to take arguments from outside
+def parse_arguments():
+    parser = create_parser()
     return parser.parse_args()
 
 def get_model(model:str, tasks:list, model_args):
@@ -73,7 +82,6 @@ def get_model(model:str, tasks:list, model_args):
     }
 
     key = model
-    print(f"The keys: {key}")
     if key not in model_map:
         valid = ', '.join(sorted(model_map.keys()))
         raise ValueError(
@@ -184,7 +192,7 @@ def model_run(model, data_loader):
     model.to(device)
     model.eval()
 
-    print("Running in standard multi-label (sigmoid) mode.\n")
+    print("Running model in standard multi-label mode... will return logits.\n")
     all_logits = []
     
     with torch.no_grad():
@@ -308,7 +316,6 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                     writer.writerow([f'ROC AUC {task}', auc])
     
     print("********** Finished Eval mode **********")
-    return 0
 
 
 

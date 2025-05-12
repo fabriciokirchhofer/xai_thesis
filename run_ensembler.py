@@ -1,12 +1,9 @@
-from ensemble import base_model
+from third_party import run_models
+from ensemble import model_classes
+from ensemble import ensemble
+from ensemble import evaluator
 
-import argparse
-from third_party.run_models import parse_arguments
-from ensemble.model_wrapper import DenseNet121Model
-from ensemble.ensemble import ModelEnsemble
-from ensemble.evaluator import Evaluator
-
-args = parse_arguments()
+args = run_models.parse_arguments()
 
 tasks = [
     'No Finding', 'Enlarged Cardiomediastinum' ,'Cardiomegaly', 
@@ -15,14 +12,15 @@ tasks = [
     'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices'
 ]
 
-model = DenseNet121Model(model_args=args, tasks=tasks)
+model = model_classes.DenseNet121Model(model_args=args, tasks=tasks)
 data_loader = model.prepare_data_loader(default_data_conditions=True, batch_size_override=None, test_set=False)
 print("Got loader")
 logits = model.run_class_model()
 print("Got logits")
 
-ensemble = ModelEnsemble(models=[model], strategy='average')
-evaluator = Evaluator(model_args=args, 
+ensemble = ensemble.ModelEnsemble(models=[model], strategy='average')
+
+evaluator = evaluator.Evaluator(model_args=args, 
                       data_loader=data_loader, 
                       tasks=tasks, 
                       logits=logits,
@@ -30,3 +28,14 @@ evaluator = Evaluator(model_args=args,
 
 evaluator.eval()
 print("*************** run_ensembler script completed ***************")
+
+
+
+
+# Each model can point to its own checkpoint and config via args.
+# from ensemble.model_wrapper import DenseNet121Model, ResNet152Model
+
+# model1 = DenseNet121Model(tasks=tasks, args=args1)
+# model2 = ResNet152Model(tasks=tasks, args=args2)
+
+# ensemble = ModelEnsemble(models=[model1, model2], strategy='average')
