@@ -51,20 +51,17 @@ def main():
     # Retrieve default arguments from run_models.parse_arguments()
     # We temporarily clear sys.argv so parse_arguments() returns its defaults
     saved_argv = sys.argv
-    print(f"Saved argv: {saved_argv}")
     sys.argv = sys.argv[:1]
     base_args = run_models.parse_arguments()
-    print(f"Base args: {base_args}")
     sys.argv = saved_argv
-    print(f"Updated argv: {sys.argv}")
 
     # Instantiate each model configuration
     models = []
     for model_cfg in config['models']:
-        print(f"Current m_cfg is: {model_cfg}")
+        #print(f"***Current m_cfg is: {model_cfg}")
         # Copy default args to preserve base settings for each model
         args_model = copy.deepcopy(base_args)
-        print(f"*** args_model are {args_model}")
+        #print(f"args_model are: {args_model}")
 
         # Override architecture and checkpoint path per config
         args_model.model = model_cfg.get('architecture', args_model.model)
@@ -73,20 +70,24 @@ def main():
         # Apply any additional overrides (e.g., input_size, num_classes). 
         for key, val in model_cfg.get('overrides', {}).items():
             # set attribute by name into args_model
+            print(f"For {model_cfg['name']}:{args_model.model} override following default arguments with:\tkey:{key}\tval:{val}.\n"
+                  "Make sure prepare_data_loader doesn't accept only default values.\n")
             setattr(args_model, key, val)
 
         # Retrieve the appropriate model wrapper class using model_classes
-        print(f"Model name: {args_model.model}")
         ModelWrapper = model_classes.get_model_wrapper(args_model.model)
         # Instantiating the model loads weights and sets eval mode
         model_obj = ModelWrapper(tasks=tasks, model_args=args_model)
         models.append(model_obj)
 
     model_preds = []
+    use_test = config["evaluation"].get("evaluate_test_set", False) # alternative without default value config["evaluation"]["evaluate_test_set"]
+    print(f"Test case: {use_test}")
     for i, model in enumerate(models):
-        data_loader = models[i].prepare_data_loader(default_data_conditions=True,
-                                            batch_size_override=None,
-                                            test_set=False,
+        # Be aware to check the conditions of calling arguments here
+        data_loader = models[i].prepare_data_loader(default_data_conditions=False,
+                                            batch_size_override=args_model.batch_size,
+                                            test_set=use_test,
                                             assign=True)
         logits = model.run_class_model()
         if config['evaluation'].get('use_logits', False):
@@ -108,35 +109,52 @@ def main():
         all_targets.append(labels.numpy())
     all_targets = np.vstack(all_targets)
 
+
+    # ************************ Threshold handling start ************************
     tune_cfg = ensemble_cfg.get('threshold_tuning')
     thresholds = None
-    ensemble_labels = None
-    if tune_cfg and tune_cfg.get('stage', 'post') == 'post':
-        print(f"Enter to threshold tuning based on {tune_cfg['metric']}")
-        
-        thresholds, _ = evaluator.find_optimal_thresholds(
+    pred_ensemble_labels = None
+    thresholds_path = ensemble_cfg.get('thresholds_path')
+
+    # Load thresholds from npy file
+    if thresholds_path and os.path.exists(thresholds_path):
+        thresholds = np.load(thresholds_path, allow_pickle=True).item()
+        print(f"Loaded thresholds from {thresholds_path}")
+        print(f"Loaded thresholds: {thresholds}")
+    
+    # Compute thresholds based on youden-index
+    elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
+        print(f"Enter to threshold tuning based on {tune_cfg['metric']}")       
+        thresholds, metric_scores = evaluator.find_optimal_thresholds(
             probabilities=ensemble_preds,
             ground_truth=all_targets,
             tasks=tasks,
             metric=tune_cfg.get('metric', 'youden')
         )
-        
-        ensemble_labels = evaluator.threshold_based_predictions(
+        print(f"Thresholds from tuning: {thresholds}")
+        print(f"Metric_scores: {metric_scores}")
+
+    # Compute threshold based labels
+    if thresholds is not None:
+        pred_ensemble_labels = evaluator.threshold_based_predictions(
             probs=torch.tensor(ensemble_preds), 
             thresholds=thresholds, 
             tasks=tasks
         ).numpy()
+
     else:
-        ensemble_labels = (ensemble_preds >= 0.5).astype(float)
+        print("No threshold tuning applied. Will take default threshold 0.5")
+        pred_ensemble_labels = (ensemble_preds >= 0.5).astype(float)
+    # ************************ Threshold handling end ************************
 
     eval_cfg = config.get('evaluation', {})
     results = evaluator.evaluate_metrics(
         predictions=ensemble_preds,
-        binary_preds=ensemble_labels,
+        binary_preds=pred_ensemble_labels,
         targets=all_targets,
         use_logits=eval_cfg.get('use_logits', False),
         metrics=eval_cfg.get('metrics', ['AUROC']),
-        average_auroc_classes=eval_cfg.get('average_auroc_classes', eval_tasks),
+        evaluation_sub_tasks=eval_cfg.get('evaluation_sub_tasks', eval_tasks),
         tasks=tasks
     )
     evaluator.plot_roc(predictions=ensemble_preds,
@@ -147,9 +165,11 @@ def main():
     with open(os.path.join(results_dir, 'metrics.json'), 'w') as mf:
         json.dump(results, mf, indent=4)
     np.save(os.path.join(results_dir, 'ensemble_preds.npy'), ensemble_preds)
-    if ensemble_labels is not None:
-        np.save(os.path.join(results_dir, 'ensemble_labels.npy'), ensemble_labels)
+    if pred_ensemble_labels is not None:
+        np.save(os.path.join(results_dir, 'ensemble_labels.npy'), pred_ensemble_labels)
     np.save(os.path.join(results_dir, 'true_labels.npy'), all_targets)
+    if thresholds is not None:
+        np.save(os.path.join(results_dir, 'thresholds.npy'), thresholds)
 
     print(f"Experiment complete. Results saved in {results_dir}")
     
@@ -160,7 +180,7 @@ def main():
     hours   = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
-    print(f"Elapsed: {hours}h {minutes}m {seconds}s")
+    print(f"Elapsed time: {hours}h {minutes}m {seconds}s")
 
 
 if __name__ == '__main__':

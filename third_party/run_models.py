@@ -192,7 +192,7 @@ def model_run(model, data_loader):
     model.to(device)
     model.eval()
 
-    print("Running model in standard multi-label mode... will return logits.\n")
+    print("Running model in standard multi-label mode...\n")
     all_logits = []
     
     with torch.no_grad():

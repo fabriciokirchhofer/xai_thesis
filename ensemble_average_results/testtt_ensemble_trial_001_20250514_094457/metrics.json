@@ -1,0 +1,53 @@
+{
+    "AUROC": {
+        "No Finding": 0.8653329752953813,
+        "Enlarged Cardiomediastinum": 0.6336146788990826,
+        "Cardiomegaly": 0.8056343019135365,
+        "Lung Opacity": 0.3068783068783069,
+        "Lung Lesion": 0.592274678111588,
+        "Edema": 0.8920634920634921,
+        "Consolidation": 0.9243178049148199,
+        "Pneumonia": 0.7179203539823008,
+        "Atelectasis": 0.8417207792207793,
+        "Pneumothorax": 0.7898230088495575,
+        "Pleural Effusion": 0.9175082670479936,
+        "Pleural Other": 0.927038626609442,
+        "Fracture": NaN,
+        "Support Devices": 0.9155199058061668
+    },
+    "AUROC_subset_mean": 0.8762489290321243,
+    "F1_per_class": {
+        "No Finding": 0.5439999999999999,
+        "Enlarged Cardiomediastinum": 0.6486486486486487,
+        "Cardiomegaly": 0.6341463414634146,
+        "Lung Opacity": 0.031007751937984492,
+        "Lung Lesion": 0.0196078431372549,
+        "Edema": 0.6727272727272727,
+        "Consolidation": 0.5299145299145299,
+        "Pneumonia": 0.1282051282051282,
+        "Atelectasis": 0.7006369426751592,
+        "Pneumothorax": 0.1111111111111111,
+        "Pleural Effusion": 0.7903225806451613,
+        "Pleural Other": 0.018691588785046728,
+        "Fracture": 0.0,
+        "Support Devices": 0.8436018957345972
+    },
+    "F1_subset_mean": 0.6655495334851075,
+    "Youden_per_class": {
+        "No Finding": 0.6243286788399569,
+        "Enlarged Cardiomediastinum": 0.2426422018348624,
+        "Cardiomegaly": 0.49964564138908574,
+        "Lung Opacity": 0.006613756613756516,
+        "Lung Lesion": 0.5708154506437768,
+        "Edema": 0.674074074074074,
+        "Consolidation": 0.6757123473541384,
+        "Pneumonia": 0.33738938053097334,
+        "Atelectasis": 0.5446428571428572,
+        "Pneumothorax": 0.4336283185840708,
+        "Pleural Effusion": 0.683439091965323,
+        "Pleural Other": 0.5493562231759657,
+        "Fracture": 0.0,
+        "Support Devices": 0.713665464714107
+    },
+    "Youden-index_subset_mean": 0.6155028023850957
+}

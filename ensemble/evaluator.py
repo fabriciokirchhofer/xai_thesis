@@ -1,16 +1,15 @@
 import numpy as np
+import os
 import torch
-import third_party.utils as utils
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score, f1_score, auc, roc_curve
-
 
 def evaluate_metrics(predictions: np.ndarray,
                      binary_preds: np.ndarray,
                      targets: np.ndarray,
                      use_logits: bool = False,
                      metrics: list = ['AUROC'],
-                     average_auroc_classes: list = None,
+                     evaluation_sub_tasks: list = None,
                      tasks:list=None) -> dict:
     """
     Compute evaluation metrics for model or ensemble outputs.
@@ -44,13 +43,12 @@ def evaluate_metrics(predictions: np.ndarray,
             auroc_map[key] = val
         results['AUROC'] = auroc_map
         # Average AUROC over specified subset
-        if average_auroc_classes:
-            # average_auroc_classes may be names or indices
-            subset_auroc = []
-            for task in average_auroc_classes:
+        if evaluation_sub_tasks:
+            subset = []
+            for task in evaluation_sub_tasks:
                 val = auroc_map.get(task)
-                subset_auroc.append(val)
-            results['AUROC_subset_mean'] = float(np.mean(subset_auroc))
+                subset.append(val)
+            results['AUROC_subset_mean'] = float(np.mean(subset))
 
     # F1-score per class - best value at 1 and worst score at 0
     if 'F1' in metrics:
@@ -60,6 +58,13 @@ def evaluate_metrics(predictions: np.ndarray,
             key = tasks[task_idx]
             f1_scores_map[key] = score
         results['F1_per_class'] = f1_scores_map
+        # Average F1 score over specified subset
+        if evaluation_sub_tasks:
+            subset = []
+            for task in evaluation_sub_tasks:
+                val = f1_scores_map.get(task)
+                subset.append(val)
+            results['F1_subset_mean'] = float(np.mean(subset))
 
     # Youden index per class
     # Best value at 1 (perfect trade-off between sensitivity and specificity) and worst score at 0 (random)
@@ -78,6 +83,13 @@ def evaluate_metrics(predictions: np.ndarray,
             key = tasks[task_idx]
             youden_indices_map[key] = youden_idx
         results['Youden_per_class'] = youden_indices_map
+        # Average Youden-index over specified subset
+        if evaluation_sub_tasks:
+            subset = []
+            for task in evaluation_sub_tasks:
+                val = youden_indices_map.get(task)
+                subset.append(val)
+            results['Youden-index_subset_mean'] = float(np.mean(subset))
         
     return results
 
@@ -100,11 +112,9 @@ def find_optimal_thresholds(probabilities: np.ndarray,
         metric_scores (dict): Mapping class index -> best metric value at threshold.
     """
     n_classes = probabilities.shape[1]
-    print(f"probabilities: {probabilities.shape}")
     thresholds = np.arange(0.0, 1.0 + step, step)
     optimal_thresholds = {}
     metric_scores = {}
-    print(f"Some test probabilities: {probabilities[0:5, 0]}")
 
     for task_idx in range(n_classes):
         best_thresh = 0.5
@@ -114,7 +124,6 @@ def find_optimal_thresholds(probabilities: np.ndarray,
 
         # Skip if only one class present
         if len(np.unique(y_true)) < 2:
-            print(f"Fell into skip for task_idx-{task_idx} because only one prediction type present.")
             optimal_thresholds[task_idx] = best_thresh
             metric_scores[task_idx] = None
             continue
@@ -163,12 +172,6 @@ def threshold_based_predictions(probs: torch.Tensor,
     return preds
 
 
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.metrics import roc_curve, auc
-import torch
-
 def plot_roc(predictions:np.ndarray=None, 
              ground_truth:np.ndarray=None, 
              tasks:list=None, 
@@ -202,13 +205,13 @@ def plot_roc(predictions:np.ndarray=None,
 
         # Skip if only one class present in ground truth
         if len(np.unique(gt)) < 2:
-            print(f"Warning: Only one class present in ground truth for {task}. Skipping.")
+            print(f"Warning: Only one sample present in ground truth for {task}. Skip.")
             continue
 
         # Compute ROC
         fpr, tpr, _ = roc_curve(gt, pred)
         roc_auc = auc(fpr, tpr)
-        print(f"Plotting ROC for {task}, AUC={roc_auc:.2f}")
+        #print(f"Plot ROC for {task}, AUC={roc_auc:.2f}")
 
         # Individual ROC plot
         fig, ax = plt.subplots(figsize=(8, 6))

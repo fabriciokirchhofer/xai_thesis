@@ -21,7 +21,7 @@
       {
         "name": "ModelC",
         "_comment_path": "ckpt_d_ignore_2",
-        "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_2/epoch=2-chexpert_competition_AUROC=0.88.ckpt",
+        "checkpoint_path": "densenet121/uncertainty/densenet_ignore_2/epoch=2-chexpert_competition_AUROC=0.88.ckpt",
         "architecture": "DenseNet121",
         "overrides": {
           "batch_size": 64

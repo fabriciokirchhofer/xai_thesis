@@ -60,10 +60,11 @@ class BaseModelXAI(ABC):
             print(f"Loading data in BaseModel from default")
             loader = run_models.prepare_data(model_args=args)
         else:
-            print(f"Loading data with customized settings.")
+            print(f"Run with overriden settings. See in model_cfg what was overriden.")
             batch_size = batch_size_override or self.model_args.batch_size
             
             if test_set:
+                print("Get labels from Test set")
                 labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/test.csv'  
             else:
                 labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/valid.csv'
