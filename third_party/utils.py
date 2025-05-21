@@ -5,6 +5,7 @@ from captum.attr import LayerGradCam
 import numpy as np
 import torch
 import os
+import json
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch.nn.functional as F
@@ -174,17 +175,187 @@ def class_distinctiveness(saliency_dict:dict)->dict:
 
 def sum_up_distinctiveness(collection:dict, new_scores)->dict:
     """
-    Function to gather pair-wise distinctiveness of several images in dictionary.
+    Helper function to gather pair-wise distinctiveness of several images in dictionary.
     Args: 
         collection (dict): Pair-wise class distinctiveness in structure of dict[tuple(str,str), float32] containing pair-wise class names and dist. value.
         new_scores (dict): Pair-wise class distinctiveness in structure of dict[tuple(str,str), float32] containing pair-wise class names and dist. value.
     Return:
-        collection (dict): Collection of pair-wise class distinctiveness in structure of dict[tuple(str,str), list[float32]] containing pair-wise class names and list of dist. values.
+        collection (dict): Collection of pair-wise class distinctiveness in structure of dict[tuple(str,str), list[float32]] containing pair-wise class names and list of cosine-similarity values.
     """
     for pair, val in new_scores.items():
-        # If key called pair already exists it returns collection[pair], if not yet existing it creates new key with empty list.
+        # If key named pair already exists it returns collection[pair], if not yet existing it creates new key with empty list.
         collection.setdefault(pair, []).append(val)
     return collection
+
+
+def per_class_distinctiveness(distinctiveness_collection: dict,
+                              normalize: bool = True,
+                              save_path: str = None,
+                              ckpt_name:str=None) -> dict:
+    """
+    Plots a boxplot for each class’s distinctiveness distribution and optionally saves it,
+    and computes a per-class distinctiveness score.
+
+    Args:
+        distinctiveness_collection: dict[tuple(str,str) -> list[float]].
+            Pairwise class distinctiveness values.
+        normalize: whether to min–max normalize before plotting.
+        save_path: directory where outputs will be saved.
+            If provided, it'll save:
+              - class_wise_boxplot.png
+              - class_wise_distinctiveness.json
+
+    Returns:
+        class_wise_distinctiveness: dict[str -> float]
+            Mapping from class name to its mean distinctiveness.
+            If save_path is given, returns 0 after saving.
+    """
+    # 1) raw or normalized data
+    data = normalize and normalize_distinctiveness(distinctiveness_collection) \
+           or distinctiveness_collection
+
+    # 2) gather all values per class
+    class_values = {}
+    for (a, b), vals in data.items():
+        class_values.setdefault(a, []).extend(vals)
+        class_values.setdefault(b, []).extend(vals)
+
+    # 3) prepare for boxplot
+    classes = sorted(class_values.keys())
+    values = [class_values[cls] for cls in classes]
+
+    plt.figure(figsize=(max(6, len(classes)*0.5), 6))
+    plt.boxplot(values, labels=classes, showfliers=True)
+    plt.xticks(rotation=45, ha="right")
+    plt.ylabel("Distinctiveness")
+    plt.title("Class-wise Distinctiveness")
+    plt.tight_layout()
+
+    # 4) compute mean distinctiveness per class
+    class_wise_distinctiveness = {
+        cls: float(np.mean(class_values[cls])) if class_values[cls] else float("nan")
+        for cls in classes
+    }
+
+    # 5) save if requested
+    if save_path:
+        # if not os.path.exists(save_path):
+        #     os.makedirs(save_path, exist_ok=True)
+        # figure
+        plot_path = os.path.join(save_path, ckpt_name + "_class_wise_boxplot.png")
+        plt.savefig(plot_path)
+        # JSON of means
+        json_path = os.path.join(save_path, ckpt_name + "_class_wise_distinctiveness.json")
+        with open(json_path, "w") as f:
+            json.dump(class_wise_distinctiveness, f, indent=4)
+        plt.close()
+        return 0
+    else:
+        print(f"No path provided. Nothing to be stored."
+              f"Class_wise_distinctiveness: {class_wise_distinctiveness}")
+        return class_wise_distinctiveness
+
+
+# def per_class_distinctiveness(distinctiveness_collection: dict,
+#                               normalize: bool = True,
+#                               save_path: str = None) -> dict:
+#     """
+#     Plots a boxplot for each class-pair’s distinctiveness distribution and optionally saves it,
+#     and computes a per-class distinctiveness score.
+
+#     Args:
+#         distinctiveness_collection: dict[tuple(str,str) -> list[float]].
+#             Pairwise class distinctiveness values.
+#         normalize: whether to min–max normalize before plotting.
+#         save_path: full file path where the figure will be saved (e.g. "/…/distinctiveness.png").
+#             If provided, the directory will be created if needed, the plot will be saved there,
+#             and a JSON of class means will be written alongside it.
+
+#     Returns:
+#         class_wise_distinctiveness: dict[str -> float]
+#             Mapping from class name to its (weighted) mean distinctiveness.
+#     """
+#     # Get raw or normalized data
+#     data = normalize and normalize_distinctiveness(distinctiveness_collection) \
+#            or distinctiveness_collection
+
+#     # Plot pairwise boxplot
+#     pairs = list(data.keys())
+#     print(f"The pairs: {pairs}")
+#     values = [data[p] for p in pairs]
+#     labels = [f"{a}–{b}" for (a, b) in pairs]
+
+#     plt.figure(figsize=(max(6, len(pairs)*0.5), 6))
+#     plt.boxplot(values, labels=labels, showfliers=True)
+#     plt.xticks(rotation=45, ha="right")
+#     plt.ylabel("Distinctiveness")
+#     plt.title("Pairwise Class Distinctiveness")
+#     plt.tight_layout()
+
+#     # Compute per-class distinctiveness (flatten & weighted mean)
+#     #    i.e. for each class, gather *all* values from any pair containing it
+#     class_values = {}
+#     for (a, b), vals in data.items():
+#         class_values.setdefault(a, []).extend(vals)
+#         class_values.setdefault(b, []).extend(vals)
+
+#     class_wise_distinctiveness = {
+#         cls: float(np.mean(vs)) if vs else float("nan")
+#         for cls, vs in class_values.items()
+#     }
+#     print(f"The labels: {class_wise_distinctiveness.keys()}")
+
+#     # Save if requested
+#     if save_path:
+#         print(f"save_path: {save_path}")
+#         if save_path and not os.path.exists(save_path):
+#             os.makedirs(save_path, exist_ok=True)
+#         # save the figure
+#         boxplt_path = os.path.join(save_path, "class_wise_boxplot.png")
+#         plt.savefig(boxplt_path)
+#         # save the JSON of means
+#         json_path = os.path.join(save_path, "class_wise_distinctiveness.json")
+#         with open(json_path, "w") as f:
+#             json.dump(class_wise_distinctiveness, f, indent=4)
+#         return 0
+#     else:
+#         print(f"No path provided. Nothing to be stored."
+#               f"Class_wise_distinctiveness: {class_wise_distinctiveness}")
+#         return class_wise_distinctiveness
+
+
+# def per_class_distinctiveness(distinctiveness_collection:dict,
+#                               normalize:bool=True,
+#                               save_path:str=None)->dict:
+#     """
+#     Plots a boxplot for each class-pair’s distinctiveness distribution and optionally saves it.
+#     Args:
+#         distinctiveness_collection: dict[tuple(str,str) -> list[float]]. It is a collection (dict): Collection of pair-wise class distinctiveness in structure of dict[tuple(str,str), list[float32]] containing pair-wise class names and list of cosine-similarity values.
+#         normalize: whether to min–max normalize before plotting.
+#         save_path: full file path where the figure will be saved.
+#             If provided, the directory will be created if needed.
+#     Returns:
+#         Dictionary with class wise distinctiveness for further customization or saving.
+#     """
+
+#     # choose raw or normalized data
+#     data = normalize and normalize_distinctiveness(distinctiveness_collection) or distinctiveness_collection
+
+#     name_pairs = list(data.keys())
+#     pair_distinctivenss_values = [data[pair] for pair in name_pairs]
+#     print(f"Pair names: {name_pairs}")
+
+#     class_wise_distinctiveness = 0
+
+#     # Save if requested
+#     if save_path:
+#         directory = os.path.dirname(save_path)
+#         if directory and not os.path.exists(directory):
+#             os.makedirs(directory, exist_ok=True)
+#         with open(os.path.join(save_path, 'class_wise_distinctiveness.json'), 'w') as mf:
+#             json.dump(class_wise_distinctiveness, mf, indent=4)
+
+#     return class_wise_distinctiveness
 
 def normalize_distinctiveness(distinctiveness_collection: dict)->dict:
     """
@@ -220,7 +391,7 @@ def plot_distinctiveness_boxplots(distinctiveness_collection: dict,
     Plots a boxplot for each class-pair’s distinctiveness distribution and optionally saves it.
     Args:
         distinctiveness_collection: dict[tuple(str,str) -> list[float]]
-        normalize: whether to min–max normalize before plotting.
+        normalize (bool): whether to min–max normalize before plotting.
         save_path: full file path where the figure will be saved.
             If provided, the directory will be created if needed.
     Returns:
@@ -249,7 +420,6 @@ def plot_distinctiveness_boxplots(distinctiveness_collection: dict,
             os.makedirs(directory, exist_ok=True)
         fig.savefig(save_path, dpi=300)
 
-    return fig
 
 
 
@@ -361,6 +531,33 @@ def compute_accuracy(predictions, labels):
     total = labels.numel()
     accuracy = correct / total
     return accuracy.item()
+
+def get_max_prob_per_view(probs, gt_labels, tasks: list = None, args=None):
+    # 1) bring inputs into plain numpy floats
+    if isinstance(probs, torch.Tensor):
+        probs = probs.detach().cpu().numpy()
+    if isinstance(gt_labels, torch.Tensor):
+        gt_labels = gt_labels.detach().cpu().numpy()
+
+    # 2) load study IDs
+    df = extract_study_id(mode=args.run_test)
+
+    # 3) build DataFrames
+    prob_df = pd.DataFrame(probs, columns=tasks)
+    gt_df   = pd.DataFrame(gt_labels, columns=tasks)
+    prob_df['study_id'] = df['study_id']
+    gt_df['study_id']   = df['study_id']
+
+    # 4) group and take max per study
+    agg_prob = prob_df.groupby('study_id').max()
+    agg_gt   = gt_df.groupby('study_id').max()
+    #print(f"Current aggregated ground truth df: {agg_gt.head()}")
+
+    # 5) convert back to torch tensors of floats
+    prob_arr = agg_prob.to_numpy(dtype=np.float32)
+    gt_arr   = agg_gt.to_numpy(dtype=np.float32)
+
+    return prob_arr, gt_arr
 
 
 def comput_youden_idx(ground_truth, preds, tasks):
@@ -524,7 +721,6 @@ def plot_roc(predictions, ground_truth, tasks, n_classes=14):
             tasks (list of str): Names for each class/task.
             n_classes (int): must match the number of classes. By default 14
         """
-        print("Entered plotting function")
         # Convert to numpy arrays if necessary
         if torch.is_tensor(predictions):
             predictions = predictions.detach().cpu().numpy()
@@ -550,7 +746,6 @@ def plot_roc(predictions, ground_truth, tasks, n_classes=14):
             fpr, tpr, _ = roc_curve(gt, pred)
             roc_auc = auc(fpr, tpr)
             
-            print(f"looping over {task}")
             # Plot individual ROC curve
             fig, ax = plt.subplots(figsize=(8, 6))
             ax.plot(fpr, tpr, lw=2, label=f'ROC (AUC = {roc_auc:.2f})')

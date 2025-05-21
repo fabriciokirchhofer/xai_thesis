@@ -7,13 +7,13 @@ from torchvision import transforms
 # import third_party.dataset as dataset
 # import third_party.models as models
 
-# import utils
-# import dataset
-# import models
+import utils
+import dataset
+import models
 
-from third_party import utils
-from third_party import dataset
-from third_party import models
+# from third_party import utils
+# from third_party import dataset
+# from third_party import models
 
 import csv
 import pandas as pd
@@ -44,8 +44,8 @@ def create_parser():
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
-    parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_3, help='Path to checkpoint file')
+    parser.add_argument('--model', type=str, default='ResNet152', help='specify model name')
+    parser.add_argument('--ckpt', type=str, default=ckpt_r_ignore_3x_ep2_2, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
@@ -53,8 +53,8 @@ def create_parser():
     parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')   
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
-    parser.add_argument('--plot_roc', type=bool, default=True, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='get', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
+    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside
@@ -93,7 +93,7 @@ def get_model(model:str, tasks:list, model_args):
     return model_class(tasks=tasks, model_args=model_args)
 
 
-# Load checkpoint and its parameters
+# Load checkpoint and its parameters - original one
 def load_checkpoint(model, checkpoint_path):
     ckpt = torch.load(checkpoint_path)
     state_dict = ckpt.get('state_dict', ckpt)
@@ -141,6 +141,14 @@ def prepare_data(model_args):
     #     train_mean = torch.tensor([0.5, 0.5, 0.5])
     #     train_std = torch.tensor([0.5, 0.5, 0.5])
     #     size = (299, 299)
+
+#     # Transform including first resize and then crop - bad results
+#     inference_transform = transforms.Compose([
+#         transforms.ConvertImageDtype(torch.float),
+#         transforms.Resize(342),  # Resize shorter side to slightly larger than target
+#         transforms.CenterCrop(299),  # Crop the center square to target dimensions
+#         transforms.Normalize(mean=train_mean, std=train_std)
+# ])
 
     # Define inference transformation pipeline for the inception v4 architecture
     inference_transform = transforms.Compose([
@@ -248,10 +256,13 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
 
     if not model_args.run_test:
         predictions = utils.threshold_based_predictions(probs, model_args.sigmoid_threshold, tasks)
-
+        
         # Move to CPU (logits from model_run are already concatenated across batches)
         probs = probs.cpu()
         predictions = predictions.cpu()
+
+        for i in range(2):
+            print(f"Sample {i}:  GT = {gt_labels[i].tolist()},\nPred = {[round(float(p),3) for p in probs[i]]}")
 
         acc = utils.compute_accuracy(predictions, gt_labels)
         print("-" * 40)
@@ -260,6 +271,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
         auroc = utils.auroc(probabilities=probs, ground_truth=gt_labels, tasks=tasks)
         print("-" * 40)
         print(f"AUROC from sigmoid based probabilities:")
+
 
         eval_tasks = ['Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
         eval_auroc = 0
@@ -378,21 +390,11 @@ def run_test_with_thresholds(model, model_args, tasks, test_loader, threshold_cs
 
 def main():
     model_args = parse_arguments()
-    """
-    # TODO: Based on Mikes recommendation: Check two ways how to replace and handle parse_arguments
-    import json
-    with open('path.json', encoding='utf-8') as f:
-        config = json.load(f)
 
-    from itertools import permutations
-    """
-
-    tasks = [
-        'No Finding', 'Enlarged Cardiomediastinum' ,'Cardiomegaly', 
-        'Lung Opacity', 'Lung Lesion' , 'Edema' ,
-        'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
-        'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices'
-    ]
+    tasks = ['No Finding', 'Enlarged Cardiomediastinum', 'Cardiomegaly',
+             'Lung Opacity', 'Lung Lesion', 'Edema',
+             'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
+             'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices']
 
     # Create the model based on provided arguments
     model = get_model(model_args.model, tasks, model_args)
