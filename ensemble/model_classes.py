@@ -60,7 +60,7 @@ class BaseModelXAI(ABC):
             print(f"Loading data in BaseModel from default")
             loader = run_models.prepare_data(model_args=args)
         else:
-            print(f"Run with overriden settings. See in model_cfg what was overriden.")
+            print(f"Run with overriden settings. See in config what was overriden.")
             batch_size = batch_size_override or self.model_args.batch_size
             
             if test_set:

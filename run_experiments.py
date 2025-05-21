@@ -6,14 +6,13 @@ import copy
 import shutil
 import numpy as np
 import torch
-from third_party import run_models
+from third_party import run_models, utils
 from ensemble import ensemble as ens_module
 from ensemble import evaluator
 from ensemble import model_classes  # factory for BaseModelXAI wrappers
 
-
 def main():
-    print("******************** Get run_experiments started ********************")
+    print("******************** Get run_experiments.py started ********************")
     local_time_zone = datetime.timezone(datetime.timedelta(hours=2), name="CEST")
     start = datetime.datetime.now(local_time_zone)
 
@@ -39,12 +38,10 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
     shutil.copy(args.config, os.path.join(results_dir, 'config.json'))
 
-    tasks = [
-        'No Finding', 'Enlarged Cardiomediastinum' ,'Cardiomegaly', 
-        'Lung Opacity', 'Lung Lesion' , 'Edema' ,
-        'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
-        'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices'
-    ]
+    tasks = ['No Finding', 'Enlarged Cardiomediastinum', 'Cardiomegaly',
+             'Lung Opacity', 'Lung Lesion', 'Edema',
+             'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
+             'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices']
 
     eval_tasks = ['Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
 
@@ -70,8 +67,8 @@ def main():
         # Apply any additional overrides (e.g., input_size, num_classes). 
         for key, val in model_cfg.get('overrides', {}).items():
             # set attribute by name into args_model
-            print(f"For {model_cfg['name']}:{args_model.model} override following default arguments with:\tkey:{key}\tval:{val}.\n"
-                  "Make sure prepare_data_loader doesn't accept only default values.\n")
+            #print(f"For {model_cfg['name']}:{args_model.model} override following default arguments with:\tkey:{key}\tval:{val}.\n"
+                  #"Make sure prepare_data_loader doesn't accept only default values.\n")
             setattr(args_model, key, val)
 
         # Retrieve the appropriate model wrapper class using model_classes
@@ -89,26 +86,31 @@ def main():
                                             batch_size_override=args_model.batch_size,
                                             test_set=use_test,
                                             assign=True)
+
         logits = model.run_class_model()
         if config['evaluation'].get('use_logits', False):
             preds = logits.cpu()
             print(f"Ensembly evaluation based on logits.")
         else:
             preds = torch.sigmoid(logits).cpu()
-            print(f"Ensembly evaluation based on probabilities")
-        model_preds.append(preds)
+            print(f"Ensembly evaluation based on probabilities.")
+        model_preds.append(preds)    
 
     ensemble_cfg = config.get('ensemble', {})
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
     strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, **ensemble_cfg)
     ensemble_preds = strategy_fn(model_preds)
 
-    # Get labels for evaluation
     all_targets = []
     for _, labels in data_loader:
         all_targets.append(labels.numpy())
     all_targets = np.vstack(all_targets)
 
+    # Per patient get view with xax prob
+    ensemble_preds, all_targets = utils.get_max_prob_per_view(probs=ensemble_preds,
+                                                        gt_labels=all_targets,
+                                                        tasks=tasks,
+                                                        args=args_model)
 
     # ************************ Threshold handling start ************************
     tune_cfg = ensemble_cfg.get('threshold_tuning')
@@ -132,7 +134,6 @@ def main():
             metric=tune_cfg.get('metric', 'youden')
         )
         print(f"Thresholds from tuning: {thresholds}")
-        print(f"Metric_scores: {metric_scores}")
 
     # Compute threshold based labels
     if thresholds is not None:
@@ -161,6 +162,42 @@ def main():
                     ground_truth=all_targets,
                     tasks=tasks,
                     save_dir=results_dir)
+    
+    model_names = [m["_identifier"] for m in config["models"]]
+    #ensemble_models_analysis = output_cfg.get('plot_models_analysis', False)
+    
+    if output_cfg.get('plot_models_analysis', False):
+        print("Plot ensemble models analysis")
+        evaluator.plot_prediction_distributions(model_preds=model_preds,
+                                                tasks=tasks,
+                                                class_idx=None,
+                                                sample_idx=None,
+                                                bins=20,
+                                                kde=True,
+                                                model_names=model_names,
+                                                save_dir=results_dir)
+        
+        evaluator.plot_prediction_distributions(model_preds=model_preds,
+                                                tasks=tasks,
+                                                class_idx=None,
+                                                sample_idx=None,
+                                                bins=20,
+                                                kde=False,
+                                                model_names=model_names,
+                                                save_dir=results_dir)
+
+        evaluator.plot_model_correlation(model_preds=model_preds,
+                                        model_names=model_names,
+                                        save_dir=results_dir)
+        
+        evaluator.plot_umap_model_predictions(model_preds=model_preds,
+                                        model_names=model_names,
+                                        n_neighbors=30,
+                                        min_dist=0.0,
+                                        metric=eval_cfg.get('umap_metric', 'euclidean'),
+                                        n_components=3,
+                                        save_dir=results_dir) # scp -r fkirchhofer@nerve.artorg.unibe.ch:nerve_folder_path /Users/fabri/Desktop
+        
 
     with open(os.path.join(results_dir, 'metrics.json'), 'w') as mf:
         json.dump(results, mf, indent=4)
@@ -181,7 +218,6 @@ def main():
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
     print(f"Elapsed time: {hours}h {minutes}m {seconds}s")
-
 
 if __name__ == '__main__':
     main()

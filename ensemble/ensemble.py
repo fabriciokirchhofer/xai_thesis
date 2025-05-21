@@ -30,7 +30,7 @@ class ModelEnsemble:
         return all_preds, all_targets
 
 
-def _uncertainty_weighted_avg(preds_list):
+def _mean_dist(preds_list):
     arr = np.stack(preds_list, axis=-1)
     mean = np.mean(arr, axis=-1, keepdims=True)
     dist = np.abs(arr - mean) + 1e-8
@@ -82,9 +82,9 @@ class StrategyFactory:
                 return combined
             return w_fn
 
-        # Uncertainty‐weighted average based on per-model distance from mean
-        if name == 'uncertainty_weighted':
-            return lambda preds: _uncertainty_weighted_avg(preds)
+        # Model weight based on distance from mean
+        if name == 'mean_distance_weighted':
+            return lambda preds: _mean_dist(preds)
 
         # Majority voting thresholded at vote_threshold
         if name == 'voting':

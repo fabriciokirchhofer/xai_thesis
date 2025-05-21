@@ -155,11 +155,10 @@ def main():
     #                                     normalize=normalize,
     #                                     save_path=save_path)
     
-    #save_class_path = os.path.join(save_dir, "ckpt_d_ignore_1")
-    utils.per_class_distinctiveness(distinctiveness_collection=distinctiveness_collection,
-                                  normalize=normalize,
-                                  save_path=save_dir,
-                                  ckpt_name = man_path)
+    # utils.per_class_distinctiveness(distinctiveness_collection=distinctiveness_collection,
+    #                               normalize=normalize,
+    #                               save_path=save_dir,
+    #                               ckpt_name = man_path)
                
     print("************************ Finished saliency_maps script ************************")
 
