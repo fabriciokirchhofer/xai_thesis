@@ -7,13 +7,13 @@ from torchvision import transforms
 # import third_party.dataset as dataset
 # import third_party.models as models
 
-import utils
-import dataset
-import models
+# import utils
+# import dataset
+# import models
 
-# from third_party import utils
-# from third_party import dataset
-# from third_party import models
+from third_party import utils
+from third_party import dataset
+from third_party import models
 
 import csv
 import pandas as pd
@@ -54,7 +54,7 @@ def create_parser():
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='get', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside

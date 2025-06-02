@@ -190,13 +190,13 @@ def main():
                                         model_names=model_names,
                                         save_dir=results_dir)
         
-        evaluator.plot_umap_model_predictions(model_preds=model_preds,
-                                        model_names=model_names,
-                                        n_neighbors=30,
-                                        min_dist=0.0,
-                                        metric=eval_cfg.get('umap_metric', 'euclidean'),
-                                        n_components=3,
-                                        save_dir=results_dir) # scp -r fkirchhofer@nerve.artorg.unibe.ch:nerve_folder_path /Users/fabri/Desktop
+        # evaluator.plot_umap_model_predictions(model_preds=model_preds,
+        #                                 model_names=model_names,
+        #                                 n_neighbors=30,
+        #                                 min_dist=0.0,
+        #                                 metric=eval_cfg.get('umap_metric', 'euclidean'),
+        #                                 n_components=3,
+        #                                 save_dir=results_dir) # scp -r fkirchhofer@nerve.artorg.unibe.ch:nerve_folder_path /Users/fabri/Desktop
         
 
     with open(os.path.join(results_dir, 'metrics.json'), 'w') as mf:

@@ -64,7 +64,7 @@ def main():
         'Edema':5,
         'Consolidation':6,
         'Atelectasis':8,
-        'Pleaural Effusion':10
+        'Pleural Effusion':10
         }
 
     # Storage locations
@@ -128,7 +128,7 @@ def main():
                     # Process and save GradCam overlay to original img.
                     upscaled_heatmap = utils.process_heatmap(heatmap=heatmap, target_size=(320, 320))
                     overlayed_imgs = utils.overlay_heatmap_on_img(original_img=img, heatmap=upscaled_heatmap, alpha=0.4)
-                    fig = utils.visualize_heatmap(heatmap=overlayed_imgs, title=(f"Grad-CM for {id} on {target_name}"))
+                    fig = utils.visualize_heatmap(heatmap=overlayed_imgs, title=(f"Grad-CAM for {id} on {target_name}"))
                     save_path = os.path.join(map_dir, f"{args.model}/{target_name}_{id}.png")
                     #print("Save path:", save_path)
                     utils.save_heatmap(fig, save_path)
