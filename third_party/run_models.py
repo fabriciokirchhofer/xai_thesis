@@ -7,13 +7,13 @@ from torchvision import transforms
 # import third_party.dataset as dataset
 # import third_party.models as models
 
-# import utils
-# import dataset
-# import models
+import utils
+import dataset
+import models
 
-from third_party import utils
-from third_party import dataset
-from third_party import models
+# from third_party import utils
+# from third_party import dataset
+# from third_party import models
 
 import csv
 import pandas as pd
@@ -44,8 +44,8 @@ def create_parser():
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
-    parser.add_argument('--model', type=str, default='ResNet152', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_r_ignore_3x_ep2_2, help='Path to checkpoint file')
+    parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
+    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')

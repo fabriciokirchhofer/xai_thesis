@@ -9,7 +9,7 @@ import json
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch.nn.functional as F
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
 
 
 
@@ -27,7 +27,7 @@ def get_target_layer(model:torch.nn.Module, layer_name:str=None)->torch.nn.Conv2
     """
     Retrieve the target convolutional layer for Grad-CAM.
     Args:
-        model (torch.nn.Module): Input model for which the specific layer shall be retrieved. By default DenseNet121.
+        model (torch.nn.Module): Input model for which the specific layer shall be retrieved.
         layer (str, optional): The layer which shall be retrieved. By default -1 to fit DenseNet121.
     Return:
         Specified layer of model for Grad-CAM.
@@ -52,18 +52,21 @@ def get_target_layer(model:torch.nn.Module, layer_name:str=None)->torch.nn.Conv2
     return target_layer # passed module for DenseNet121 is: Conv2d(128, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
 
 
-def generate_gradcam_heatmap(model:torch.nn.Module, input_tensor:torch.Tensor, target_class:int, target_layer:torch.nn.Module)->np.ndarray:
+def generate_gradcam_heatmap(model:torch.nn.Module, 
+                             input_tensor:torch.Tensor, 
+                             target_class:int, 
+                             target_layer:torch.nn.Module)->np.ndarray:
     """
     Generate a Grad-CAM heatmap for the specified input and target class.
     Args:
         model (torch.nn.Module): The trained model.
-        input_tensor (torch.Tensor): Input image tensor preprocessed as required (batch size of 1 assumed).
+        input_tensor (torch.Tensor): Input image tensor preprocessed as required. Batch size of 1 assumed, otherwise it will run but behave wrongly.
         target_class (int): Class index for which to compute the attribution.
         target_layer (torch.nn.Module): The layer to target for Grad-CAM. 
     Returns:
         2D heatmap as a NumPy array.
     """
-    grad_cam = LayerGradCam(model, target_layer)
+    grad_cam = LayerGradCam(forward_func=model, layer=target_layer)
     attributions = grad_cam.attribute(input_tensor, target=target_class)
     # Remove the batch dimension and convert to a NumPy array. If multi-channel, average them.
     heatmap = attributions.squeeze().detach().cpu().numpy()
@@ -153,7 +156,7 @@ def save_heatmap(fig:plt.Figure, save_path:str) -> None:
 # -------------------------------------------------------------------
 # *********** Utility functions for class distinctiveness ***********
 # -------------------------------------------------------------------
-def class_distinctiveness(saliency_dict:dict)->dict:
+def class_distinctiveness(saliency_dict:dict, function:str='cosine_similarity')->dict:
     """
     Function to calculate pair-wise class distinctiveness based on cosine similarity
     Args:
@@ -164,7 +167,15 @@ def class_distinctiveness(saliency_dict:dict)->dict:
     class_names = list(saliency_dict.keys())
     stacked_vectors = np.stack([np.array(saliency_dict[name]).ravel() for name in class_names], axis=0)
     #print(f"***\nShape of stacked vectors: {stacked_vectors.shape}\ntype of stacked vectors {type(stacked_vectors)}")
-    similarity_matrix = cosine_similarity(stacked_vectors)
+    if function=='cosine_similarity':
+        print(f"Compute cosine similarity of stacked vectors: {stacked_vectors}")
+        similarity_matrix = cosine_similarity(stacked_vectors)
+    elif function=='cosine_distance':
+        print(f"Compute cosine distance of stacked vectors: {stacked_vectors}")
+        # defined as 1.0 minus the cosine similarity -> range 0 to 2. 0=equal, 2=diametral opposite
+        similarity_matrix = cosine_distances(stacked_vectors)
+    else:
+        raise ValueError("Expected either 'cosine_similarity' or 'cosine_distances' as measuring metric, but got something else.")
 
     distinctiveness = {}
     for i in range(len(class_names)):
@@ -188,10 +199,10 @@ def sum_up_distinctiveness(collection:dict, new_scores)->dict:
     return collection
 
 
-def per_class_distinctiveness(distinctiveness_collection: dict,
-                              normalize: bool = True,
-                              save_path: str = None,
-                              ckpt_name:str=None) -> dict:
+def per_class_distinctiveness(distinctiveness_collection:dict,
+                              normalize:bool=True,
+                              save_path:str=None,
+                              ckpt_name:str=None)->dict:
     """
     Plots a boxplot for each class’s distinctiveness distribution and optionally saves it,
     and computes a per-class distinctiveness score.
@@ -239,9 +250,6 @@ def per_class_distinctiveness(distinctiveness_collection: dict,
 
     # 5) save if requested
     if save_path:
-        # if not os.path.exists(save_path):
-        #     os.makedirs(save_path, exist_ok=True)
-        # figure
         plot_path = os.path.join(save_path, ckpt_name + "_class_wise_boxplot.png")
         plt.savefig(plot_path)
         # JSON of means
@@ -254,108 +262,7 @@ def per_class_distinctiveness(distinctiveness_collection: dict,
         print(f"No path provided. Nothing to be stored."
               f"Class_wise_distinctiveness: {class_wise_distinctiveness}")
         return class_wise_distinctiveness
-
-
-# def per_class_distinctiveness(distinctiveness_collection: dict,
-#                               normalize: bool = True,
-#                               save_path: str = None) -> dict:
-#     """
-#     Plots a boxplot for each class-pair’s distinctiveness distribution and optionally saves it,
-#     and computes a per-class distinctiveness score.
-
-#     Args:
-#         distinctiveness_collection: dict[tuple(str,str) -> list[float]].
-#             Pairwise class distinctiveness values.
-#         normalize: whether to min–max normalize before plotting.
-#         save_path: full file path where the figure will be saved (e.g. "/…/distinctiveness.png").
-#             If provided, the directory will be created if needed, the plot will be saved there,
-#             and a JSON of class means will be written alongside it.
-
-#     Returns:
-#         class_wise_distinctiveness: dict[str -> float]
-#             Mapping from class name to its (weighted) mean distinctiveness.
-#     """
-#     # Get raw or normalized data
-#     data = normalize and normalize_distinctiveness(distinctiveness_collection) \
-#            or distinctiveness_collection
-
-#     # Plot pairwise boxplot
-#     pairs = list(data.keys())
-#     print(f"The pairs: {pairs}")
-#     values = [data[p] for p in pairs]
-#     labels = [f"{a}–{b}" for (a, b) in pairs]
-
-#     plt.figure(figsize=(max(6, len(pairs)*0.5), 6))
-#     plt.boxplot(values, labels=labels, showfliers=True)
-#     plt.xticks(rotation=45, ha="right")
-#     plt.ylabel("Distinctiveness")
-#     plt.title("Pairwise Class Distinctiveness")
-#     plt.tight_layout()
-
-#     # Compute per-class distinctiveness (flatten & weighted mean)
-#     #    i.e. for each class, gather *all* values from any pair containing it
-#     class_values = {}
-#     for (a, b), vals in data.items():
-#         class_values.setdefault(a, []).extend(vals)
-#         class_values.setdefault(b, []).extend(vals)
-
-#     class_wise_distinctiveness = {
-#         cls: float(np.mean(vs)) if vs else float("nan")
-#         for cls, vs in class_values.items()
-#     }
-#     print(f"The labels: {class_wise_distinctiveness.keys()}")
-
-#     # Save if requested
-#     if save_path:
-#         print(f"save_path: {save_path}")
-#         if save_path and not os.path.exists(save_path):
-#             os.makedirs(save_path, exist_ok=True)
-#         # save the figure
-#         boxplt_path = os.path.join(save_path, "class_wise_boxplot.png")
-#         plt.savefig(boxplt_path)
-#         # save the JSON of means
-#         json_path = os.path.join(save_path, "class_wise_distinctiveness.json")
-#         with open(json_path, "w") as f:
-#             json.dump(class_wise_distinctiveness, f, indent=4)
-#         return 0
-#     else:
-#         print(f"No path provided. Nothing to be stored."
-#               f"Class_wise_distinctiveness: {class_wise_distinctiveness}")
-#         return class_wise_distinctiveness
-
-
-# def per_class_distinctiveness(distinctiveness_collection:dict,
-#                               normalize:bool=True,
-#                               save_path:str=None)->dict:
-#     """
-#     Plots a boxplot for each class-pair’s distinctiveness distribution and optionally saves it.
-#     Args:
-#         distinctiveness_collection: dict[tuple(str,str) -> list[float]]. It is a collection (dict): Collection of pair-wise class distinctiveness in structure of dict[tuple(str,str), list[float32]] containing pair-wise class names and list of cosine-similarity values.
-#         normalize: whether to min–max normalize before plotting.
-#         save_path: full file path where the figure will be saved.
-#             If provided, the directory will be created if needed.
-#     Returns:
-#         Dictionary with class wise distinctiveness for further customization or saving.
-#     """
-
-#     # choose raw or normalized data
-#     data = normalize and normalize_distinctiveness(distinctiveness_collection) or distinctiveness_collection
-
-#     name_pairs = list(data.keys())
-#     pair_distinctivenss_values = [data[pair] for pair in name_pairs]
-#     print(f"Pair names: {name_pairs}")
-
-#     class_wise_distinctiveness = 0
-
-#     # Save if requested
-#     if save_path:
-#         directory = os.path.dirname(save_path)
-#         if directory and not os.path.exists(directory):
-#             os.makedirs(directory, exist_ok=True)
-#         with open(os.path.join(save_path, 'class_wise_distinctiveness.json'), 'w') as mf:
-#             json.dump(class_wise_distinctiveness, mf, indent=4)
-
-#     return class_wise_distinctiveness
+    
 
 def normalize_distinctiveness(distinctiveness_collection: dict)->dict:
     """
