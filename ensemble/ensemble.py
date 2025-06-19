@@ -142,8 +142,8 @@ class StrategyFactory:
             # Fill weight matrix using inverse distinctiveness for known classes
             for i, dist_dict in enumerate(distinct_vals_list):
                 # Fix possible key mismatch (e.g., "Pleaural Effusion" typo)
-                if 'Pleaural Effusion' in dist_dict and 'Pleural Effusion' not in dist_dict:
-                    dist_dict['Pleural Effusion'] = dist_dict['Pleaural Effusion']
+                if 'Pleaural Effusion' in dist_dict:
+                    dist_dict['Pleural Effusion'] = dist_dict.pop('Pleaural Effusion')
                     print(f"Corrected typo in tasks.")
                 for cls_name, dist_val in dist_dict.items():
                     if cls_name in tasks_list:

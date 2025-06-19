@@ -4,7 +4,7 @@ Script to compare two metrics JSON files.
 Ignores AUROC. Computes differences in subset means (F1, Youden-index, Accuracy)
 and per-class differences for specified diseases.
 
-./compare_metrics.py metrics_old.json metrics_new.json
+run: python ./compare_metrics.py metrics_old_1.json metrics_new_2.json
 """
 
 import json

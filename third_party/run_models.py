@@ -2,6 +2,7 @@ import argparse
 import os
 import torch
 from torchvision import transforms
+import json
 # python -m third_party.run_models
 # import third_party.utils as utils
 # import third_party.dataset as dataset
@@ -45,16 +46,16 @@ def create_parser():
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
     parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
+    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_3, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
-    parser.add_argument('--tune_thresholds', type=bool, default=False, help='If True, find optimal per-class thresholds using F1 score. Will save it.')
+    parser.add_argument('--tune_thresholds', type=bool, default=True, help='If True, find optimal per-class thresholds using F1 score. Will save it.')
     parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')   
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='get', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='compute', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside
@@ -302,6 +303,48 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                 tuned_predictions[:, i] = (probs[:, i] >= optimal_thresholds[task]).float()
             tuned_acc = utils.compute_accuracy(tuned_predictions, gt_labels)
             print(f"Overall Accuracy with tuned thresholds: {tuned_acc:.4f}")
+
+            #--------------- Section for computing Confusion Matrix starts ---------------
+            utils.plot_CM(predictions=tuned_predictions,
+                          gt_labels=gt_labels,
+                          tasks=eval_tasks,
+                          model_name=model_args.model)
+            
+            
+            acc = utils.compute_accuracy(tuned_predictions, gt_labels)
+            print(f"[Validatoin] Accuracy using tuned thresholds: {acc:.4f}")
+            
+            youden = utils.comput_youden_idx(ground_truth=gt_labels, 
+                                             preds=tuned_predictions, 
+                                             tasks=tasks)
+ 
+
+            f1 = utils.compute_f1_score(ground_truth=gt_labels, 
+                                        preds=tuned_predictions, 
+                                        tasks=tasks)
+
+            # compute averages over the subset of interest
+            avg_youden = sum(youden[task] for task in eval_tasks) / len(eval_tasks)
+            avg_f1    = sum(f1[task]    for task in eval_tasks) / len(eval_tasks)
+
+            results = {
+                "accuracy": float(acc),
+                "youden_index":    { task: float(youden[task]) for task in tasks },
+                "f1_score":        { task: float(f1[task])    for task in tasks },
+                # new averages for your selected eval_tasks
+                "average_youden_index": float(avg_youden),
+                "average_f1_score":      float(avg_f1)
+            }
+
+            save_dir = "results/confusion_matrices"
+            json_path = os.path.join(save_dir, model_args.model, "evaluation_metrics.json")
+            with open(json_path, "w") as jf:
+                json.dump(results, jf, indent=4)
+
+            print(f"Saved all validation metrics (including averages over eval_tasks) to {json_path}")
+
+
+            #--------------- Section for computing Confusion Matrix ends ---------------
 
 
             filename = os.path.expanduser('~/repo/xai_thesis/third_party/results/' +  str(model_args.model) + '_tuned_' + str(model_args.metric) + '_thresholds.csv')

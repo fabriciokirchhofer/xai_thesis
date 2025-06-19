@@ -124,6 +124,11 @@ class ResNet152Model(BaseModelXAI):
         """Initialize the ResNet152 model using existing factory logic."""
         self.model = run_models.get_model(model='ResNet152', tasks=self.tasks, model_args=self.model_args)
 
+class Inceptionv4(BaseModelXAI):
+    def _init_model(self):
+        """Initialize the Inceptionv4 model using existing factory logic."""
+        self.model = run_models.get_model(model='Inceptionv4', tasks=self.tasks, model_args=self.model_args)
+
 
 def get_model_wrapper(model_name: str):
     """
@@ -133,6 +138,7 @@ def get_model_wrapper(model_name: str):
     mapping = {
         'DenseNet121': DenseNet121Model,
         'ResNet152': ResNet152Model,
+        'Inceptionv4': Inceptionv4
         # add other model wrappers here, for example:
         # 'ResNet101': ResNet101Model,
         # 'Inceptionv3': Inceptionv3Model,

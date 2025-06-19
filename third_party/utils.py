@@ -1,7 +1,7 @@
 from sklearn import metrics
 from sklearn.metrics import f1_score, auc, roc_curve
-from sklearn.metrics import roc_auc_score
-from captum.attr import LayerGradCam
+from sklearn.metrics import roc_auc_score, confusion_matrix
+from captum.attr import LayerGradCam, LRP
 import numpy as np
 import torch
 import os
@@ -10,12 +10,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch.nn.functional as F
 from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
-
-
-
-#***********************************************
-#******************** Utils ********************
-#***********************************************
 
 
 
@@ -73,6 +67,42 @@ def generate_gradcam_heatmap(model:torch.nn.Module,
     if heatmap.ndim == 3:
         heatmap = heatmap.mean(axis=0)
     return heatmap
+
+
+def generate_lrp_attribution(model: torch.nn.Module,
+                                    input_tensor: torch.Tensor,
+                                    target_class: int) -> np.ndarray:
+    """
+    Generate a LRP attribution map for a given input and target class.
+
+    Args:
+        model (torch.nn.Module):
+            Classification network in eval() mode. Must use ReLU activations.
+        input_tensor (torch.Tensor):
+            A single preprocessed input image of shape [1, C, H, W].
+        target_class (int):
+            Index of the output neuron (class) for which to compute attributions.
+
+    Returns:
+        np.ndarray:
+            2D array of shape (H, W). If the model input has multiple channels (e.g., RGB or stacked
+            modalities), the channel-wise attributions are averaged.
+    """
+    model.eval()
+    input_tensor = input_tensor.clone().detach().requires_grad_(True)
+
+    # Initialize LRP object
+    lrp = LRP(model)
+
+    # Compute attributions for the target class
+    attributions = lrp.attribute(input_tensor, target=target_class)
+    attr = attributions.squeeze().detach().cpu().numpy()
+
+    # Aggregate across channels if needed
+    if attr.ndim == 3:
+        attr = attr.mean(axis=0)
+
+    return attr
 
 
 def process_heatmap(heatmap:np.ndarray, 
@@ -168,10 +198,10 @@ def class_distinctiveness(saliency_dict:dict, function:str='cosine_similarity')-
     stacked_vectors = np.stack([np.array(saliency_dict[name]).ravel() for name in class_names], axis=0)
     #print(f"***\nShape of stacked vectors: {stacked_vectors.shape}\ntype of stacked vectors {type(stacked_vectors)}")
     if function=='cosine_similarity':
-        print(f"Compute cosine similarity of stacked vectors: {stacked_vectors}")
+        #print(f"Compute cosine similarity of stacked vectors: {stacked_vectors}")
         similarity_matrix = cosine_similarity(stacked_vectors)
     elif function=='cosine_distance':
-        print(f"Compute cosine distance of stacked vectors: {stacked_vectors}")
+        #print(f"Compute cosine distance of stacked vectors: {stacked_vectors}")
         # defined as 1.0 minus the cosine similarity -> range 0 to 2. 0=equal, 2=diametral opposite
         similarity_matrix = cosine_distances(stacked_vectors)
     else:
@@ -663,7 +693,7 @@ def plot_roc(predictions, ground_truth, tasks, n_classes=14):
             ax.set_ylabel('True Positive Rate')
             ax.set_title(f'ROC Curve for {task}')
             ax.legend(loc="lower right")
-            fig.savefig('results/plots/roc_' + str(task) + '.png')
+            fig.savefig('results/roc_plots/roc_' + str(task) + '.png')
             
             # Add to combined plot
             ax_combined.plot(fpr, tpr, lw=2, label=f'{task} (AUC = {roc_auc:.2f})', linewidth=0.8)
@@ -675,4 +705,86 @@ def plot_roc(predictions, ground_truth, tasks, n_classes=14):
         ax_combined.set_ylabel('True Positive Rate (sensitivity)')
         ax_combined.set_title('Combined ROC Curves for All Tasks')
         ax_combined.legend(loc="lower right", fontsize='small')
-        fig_combined.savefig('results/plots/combined_roc.png')
+        fig_combined.savefig('results/roc_plots/combined_roc.png')
+
+
+
+
+# -------------------------------------------------------------------------
+# ******************************* Confusion Matrix PLOTS *******************************
+# -------------------------------------------------------------------------
+
+def plot_CM(predictions, gt_labels, tasks, model_name):
+
+    save_dir = "results/confusion_matrices"
+    save_dir = os.path.join(save_dir, model_name)
+    print(f"The directory where the CM will be stored: {save_dir}")
+    os.makedirs(save_dir, exist_ok=True)
+
+    # convert preds to numpy
+    preds_np = predictions.numpy()
+
+    # “viridis”, “plasma”, “inferno”
+    cmap = 'viridis'
+
+    # 1) Per‐task confusion matrices (as before)
+    for i, task in enumerate(tasks):
+        cm = confusion_matrix(gt_labels[:, i], preds_np[:, i])
+        fig, ax = plt.subplots()
+        im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+        ax.set_title(f'Confusion Matrix: {task}')
+        ax.set_xlabel('Predicted')
+        ax.set_ylabel('Actual')
+        ax.set_xticks([0, 1])
+        ax.set_yticks([0, 1])
+        ax.set_xticklabels(['Neg', 'Pos'])
+        ax.set_yticklabels(['Neg', 'Pos'])
+        for (j, k), v in np.ndenumerate(cm):
+            ax.text(k, j, v, ha='center', va='center')
+        fig.colorbar(im, ax=ax)
+        fig.tight_layout()
+        fig.savefig(os.path.join(save_dir, f"{task.replace(' ', '_')}_cm.png"), dpi=150)
+        plt.close(fig)
+
+    # 2) One “overall” confusion‐matrix table for *all* tasks
+    #    we build a DataFrame with rows=tasks, cols=[TN, FP, FN, TP]
+    rows = []
+    for i, task in enumerate(tasks):
+        tn, fp, fn, tp = confusion_matrix(gt_labels[:, i], preds_np[:, i]).ravel()
+        rows.append([tn, fp, fn, tp])
+
+    df_cm = pd.DataFrame(rows,
+                        index=tasks,
+                        columns=['TN', 'FP', 'FN', 'TP'])
+
+    # save raw numbers
+    df_cm.to_csv(os.path.join(save_dir, "overall_confusion_table.csv"))
+
+    # plot as a single heatmap‐style figure
+    fig, ax = plt.subplots(figsize=(8, 3 + len(tasks)*0.3))
+    im = ax.imshow(df_cm.values, interpolation='nearest', aspect='auto', cmap=cmap)
+    ax.set_title("Per-Task Confusion Matrix Counts")
+    ax.set_xticks(np.arange(df_cm.shape[1]))
+    ax.set_yticks(np.arange(df_cm.shape[0]))
+    ax.set_xticklabels(df_cm.columns)
+    ax.set_yticklabels(df_cm.index)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    for (j, k), v in np.ndenumerate(df_cm.values):
+        ax.text(k, j, int(v), ha='center', va='center',
+                color='white' if df_cm.values.max() > 50 else 'black')
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.tight_layout()
+    fig.savefig(os.path.join(save_dir, "overall_confusion_table.png"), dpi=150)
+    plt.close(fig)
+
+
+
+
+
+
+
+
+
+
+
+

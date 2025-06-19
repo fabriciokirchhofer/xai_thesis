@@ -20,7 +20,7 @@ def main():
     parent_parser.add_argument(
         '--config',        
         type=str,
-        default='config.json', # TODO: For some reason I can not pass it in the terminal. It seems unrecognized. Why?
+        default='config_leave1out.json', # TODO: For some reason I can not pass it in the terminal. It seems unrecognized. Why?
         help='Path to JSON config file'
     )
     args = parent_parser.parse_args()
