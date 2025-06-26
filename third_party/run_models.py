@@ -44,9 +44,9 @@ def create_parser():
     parser = argparse.ArgumentParser(description="Script settings to run XAI model ensemble")
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
-    parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
+    parser.add_argument('--batch_size', type=int, default=64, help='The batch size which will be passed to the model')
     parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_3, help='Path to checkpoint file')
+    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
@@ -55,7 +55,7 @@ def create_parser():
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='compute', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside
@@ -229,6 +229,17 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
     for images, labels in data_loader:
         gt_labels.append(labels.cpu())
     gt_labels = torch.cat(gt_labels, dim=0)
+    print(f"*******************GT labels sanity check in run_models.py\n Tensor shape is {gt_labels.shape}")
+    numpy_arr = gt_labels.detach().numpy()
+    df = pd.DataFrame(numpy_arr)
+    df_tasks = df.iloc[:, :]
+    counts = df_tasks.sum()
+    print(f"Shape of Dataframe: {df.shape}")
+    print(counts)
+    print("**********************************************End of GT labels sanity check")
+
+
+
 
     print("****Start evaluation mode****")
     probs = torch.sigmoid(logits).cpu()
@@ -262,8 +273,8 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
         probs = probs.cpu()
         predictions = predictions.cpu()
 
-        for i in range(2):
-            print(f"Sample {i}:  GT = {gt_labels[i].tolist()},\nPred = {[round(float(p),3) for p in probs[i]]}")
+        for i in range(5):
+            print(f"\nSample {i}:\n  GT = {gt_labels[i].tolist()},\nPred = {[round(float(p),3) for p in probs[i]]}")
 
         acc = utils.compute_accuracy(predictions, gt_labels)
         print("-" * 40)
@@ -272,8 +283,6 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
         auroc = utils.auroc(probabilities=probs, ground_truth=gt_labels, tasks=tasks)
         print("-" * 40)
         print(f"AUROC from sigmoid based probabilities:")
-
-
         eval_tasks = ['Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
         eval_auroc = 0
         for task, score in auroc.items(): 
@@ -304,10 +313,27 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
             tuned_acc = utils.compute_accuracy(tuned_predictions, gt_labels)
             print(f"Overall Accuracy with tuned thresholds: {tuned_acc:.4f}")
 
-            #--------------- Section for computing Confusion Matrix starts ---------------
-            utils.plot_CM(predictions=tuned_predictions,
-                          gt_labels=gt_labels,
-                          tasks=eval_tasks,
+
+            eval_tasks = ['Cardiomegaly', 'Edema', 'Consolidation', 'Atelectasis', 'Pleural Effusion']
+            target_class_dict = {
+                'Cardiomegaly':2,
+                'Edema':5,
+                'Consolidation':6,
+                'Atelectasis':8,
+                'Pleural Effusion':10
+                }    
+                    
+            print(f"Shape of tuned_predictions: {tuned_predictions.shape}")
+            print(f"Shape of gt_labels: {gt_labels.shape}")
+            print(f"target_class_dict.values: {target_class_dict.values()}")
+            indices = list(target_class_dict.values())
+            tuned_predictions_subset = tuned_predictions[:, indices]
+            gt_labels_subset = gt_labels[:, indices]
+            print(f"Shape of tuned_predictions_subset: {tuned_predictions_subset.shape}")
+            print(f"Shape of gt_labels_subset: {gt_labels_subset.shape}")
+            utils.plot_CM(predictions=tuned_predictions_subset,
+                          gt_labels=gt_labels_subset,
+                          tasks=target_class_dict.keys(),
                           model_name=model_args.model)
             
             
@@ -342,9 +368,6 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                 json.dump(results, jf, indent=4)
 
             print(f"Saved all validation metrics (including averages over eval_tasks) to {json_path}")
-
-
-            #--------------- Section for computing Confusion Matrix ends ---------------
 
 
             filename = os.path.expanduser('~/repo/xai_thesis/third_party/results/' +  str(model_args.model) + '_tuned_' + str(model_args.metric) + '_thresholds.csv')

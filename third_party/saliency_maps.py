@@ -140,7 +140,6 @@ def main():
             # If images shall be computed first check if already existing, otherwise compute.
             elif args.saliency=='save_img':
                 if os.path.exists(cache_map_path):
-                    print("Generate saliency map with cached heatmaps.")
                     with np.load(cache_map_path) as d:
                         heatmap = d['heatmap']
                 else:

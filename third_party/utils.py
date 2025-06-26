@@ -1,7 +1,7 @@
 from sklearn import metrics
 from sklearn.metrics import f1_score, auc, roc_curve
 from sklearn.metrics import roc_auc_score, confusion_matrix
-from captum.attr import LayerGradCam, LRP
+from captum.attr import LayerGradCam, LayerLRP
 import numpy as np
 import torch
 import os
@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch.nn.functional as F
 from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
+from run_models import parse_arguments
+
+model_args = parse_arguments()
 
 
 
@@ -91,11 +94,44 @@ def generate_lrp_attribution(model: torch.nn.Module,
     model.eval()
     input_tensor = input_tensor.clone().detach().requires_grad_(True)
 
+
+
+    ### Start experiment
+    from captum.attr import LayerLRP
+    from captum.attr._utils.lrp_rules import EpsilonRule
+    import torch
+    import models
+    tasks = ['No Finding', 'Enlarged Cardiomediastinum', 'Cardiomegaly',
+            'Lung Opacity', 'Lung Lesion', 'Edema',
+            'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
+            'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices']
+    
+
+    # 1) Define / load your model
+    model = models.ResNet152(tasks=tasks, model_args=model_args)
+    model.eval()
+    layer = get_target_layer(model=model)
+
+    # 2) Assign a custom epsilon rule to each Conv2d/Linear
+    for module in model.modules():
+        if isinstance(module, (torch.nn.Conv2d, torch.nn.Linear)):
+            # smaller epsilon for finer stability control
+            module.rule = EpsilonRule(epsilon=1e-4)
+
+
+    # 4) Instantiate LayerLRP (no rule or epsilon args here!)
+    layer_lrp = LayerLRP(model, layer)
+
+    # 5) Compute attributions
+    attributions = layer_lrp.attribute(input_tensor, target=target_class)
+
+    ### End experiment
+    # Original running
     # Initialize LRP object
-    lrp = LRP(model)
+    #lrp = LayerLRP(model, rule="epsilon", epsilon=1e-4)
 
     # Compute attributions for the target class
-    attributions = lrp.attribute(input_tensor, target=target_class)
+    #attributions = lrp.attribute(input_tensor, target=target_class)
     attr = attributions.squeeze().detach().cpu().numpy()
 
     # Aggregate across channels if needed
@@ -778,7 +814,83 @@ def plot_CM(predictions, gt_labels, tasks, model_name):
     plt.close(fig)
 
 
+# def plot_CM(predictions, gt_labels, tasks, model_name):
 
+#     save_dir = "results/confusion_matrices"
+#     save_dir = os.path.join(save_dir, model_name)
+#     print(f"The directory where the CM will be stored: {save_dir}")
+#     os.makedirs(save_dir, exist_ok=True)
+
+#     # convert preds to numpy
+#     preds_np = predictions.numpy()
+
+#     # “viridis”, “plasma”, “inferno”
+#     cmap = 'viridis'
+
+#     # 1) Per‐task confusion matrices (as before)
+#     for i, task in enumerate(tasks):
+#         cm = confusion_matrix(gt_labels[:, i], preds_np[:, i])
+#         fig, ax = plt.subplots()
+#         im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+#         ax.set_title(f'Confusion Matrix: {task}')
+#         ax.set_xlabel('Predicted')
+#         ax.set_ylabel('Actual')
+#         ax.set_xticks([0, 1])
+#         ax.set_yticks([0, 1])
+#         ax.set_xticklabels(['Neg', 'Pos'])
+#         ax.set_yticklabels(['Neg', 'Pos'])
+#         for (j, k), v in np.ndenumerate(cm):
+#             ax.text(k, j, v, ha='center', va='center')
+#         fig.colorbar(im, ax=ax)
+#         fig.tight_layout()
+#         fig.savefig(os.path.join(save_dir, f"{task.replace(' ', '_')}_cm.png"), dpi=150)
+#         plt.close(fig)
+
+#     # 2) One “overall” confusion‐matrix plotted like the fruit matrix
+#     #    rows = Actual task, cols = Predicted task
+
+#     # convert one‐hot to integer labels
+#     y_true = np.argmax(gt_labels, axis=1)
+#     y_pred = np.argmax(preds_np, axis=1)
+
+#     # build T×T confusion matrix
+#     cm_multi = confusion_matrix(y_true, y_pred, labels=range(len(tasks)))
+
+#     # plot grid with green diagonal, brown off‐diagonal
+#     fig, ax = plt.subplots(figsize=(len(tasks)*1.2, len(tasks)*1.2))
+#     ax.set_title("PREDICTED", fontsize=14, pad=20)
+
+#     # prepare a mask for the diagonal
+#     diag_mask = np.eye(len(tasks), dtype=bool)
+#     # colors: green on diag, brown elsewhere
+#     colors = np.where(diag_mask, '#70ad47', '#c85a0f')
+
+#     for i in range(len(tasks)):
+#         for j in range(len(tasks)):
+#             # colored square
+#             rect = plt.Rectangle((j, i), 1, 1,
+#                                  facecolor=colors[i, j],
+#                                  edgecolor='white')
+#             ax.add_patch(rect)
+#             # raw count
+#             ax.text(j + 0.5, i + 0.5, int(cm_multi[i, j]),
+#                     ha='center', va='center', color='white', fontsize=12)
+
+#     # ticks in the center of each cell
+#     ax.set_xticks(np.arange(len(tasks)) + 0.5)
+#     ax.set_yticks(np.arange(len(tasks)) + 0.5)
+#     ax.set_xticklabels(tasks, rotation=45, ha="right")
+#     ax.set_yticklabels(tasks)
+#     ax.set_xlabel("")   # label is provided by the big “PREDICTED” above
+#     ax.set_ylabel("ACTUAL", fontsize=14, labelpad=10)
+
+#     # invert y‐axis so row 0 is at the top
+#     ax.set_xlim(0, len(tasks))
+#     ax.set_ylim(len(tasks), 0)
+#     plt.tight_layout()
+
+#     fig.savefig(os.path.join(save_dir, "overall_confusion_multiclass.png"), dpi=150)
+#     plt.close(fig)
 
 
 

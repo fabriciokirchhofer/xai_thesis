@@ -82,7 +82,7 @@
       "method": "LRP",
       "map_folder": "saliency_maps_LRP",
       "cache_folder": "heatmap_cache_LRP",
-      "manifold_name": "ckpt_d_ignore_3"
+      "manifold_name": "ckpt_r_ignore_2"
     },
     "distinctiveness":{
       "function": "cosine_similarity",

@@ -1,7 +1,7 @@
 {
-    "Atelectasis": 0.6788800954818726,
-    "Cardiomegaly": 0.6760748028755188,
-    "Consolidation": 0.6710094213485718,
-    "Edema": 0.7319253087043762,
-    "Pleaural Effusion": 0.7865742444992065
+    "Atelectasis": 0.3012729287147522,
+    "Cardiomegaly": 0.25245046615600586,
+    "Consolidation": 0.3070344924926758,
+    "Edema": 0.30756324529647827,
+    "Pleaural Effusion": 0.24579447507858276
 }
