@@ -20,6 +20,7 @@ This script is to generate saliency maps. In the run_models.py script set the ar
 Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"
 batch_size = 1, otherwise it doesen't go correctly through tensor.
 """
+args.batch_size = 1
 
 # Assume config.json sits in the same folder as this script.
 # If you put it elsewhere, just change the path below.

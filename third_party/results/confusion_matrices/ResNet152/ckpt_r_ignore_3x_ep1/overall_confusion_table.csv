@@ -1,0 +1,6 @@
+,TN,FP,FN,TP
+Cardiomegaly,72,62,14,52
+Edema,126,32,8,34
+Consolidation,154,14,12,20
+Atelectasis,92,33,24,51
+Pleural Effusion,122,14,16,48

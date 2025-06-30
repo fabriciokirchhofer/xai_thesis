@@ -20,8 +20,8 @@
     },
     {
       "name": "ModelC",
-      "_identifier": "ckpt_i_ignore_3",
-      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_3/epoch=2-chexpert_competition_AUROC=0.85.ckpt",
+      "_identifier": "ckpt_i_ignore_1",
+      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/inceptionv4/inception_ignore_1/epoch=2-chexpert_competition_AUROC=0.85.ckpt",
       "architecture": "Inceptionv4",
       "overrides": {
         "batch_size": 64
@@ -29,8 +29,8 @@
     },
     {
       "name": "ModelD",
-      "_identifier": "ckpt_r_ignore_3x_ep1",
-      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=1-chexpert_competition_AUROC=0.87.ckpt",
+      "_identifier": "ckpt_r_ignore_2",
+      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_2/epoch=2-chexpert_competition_AUROC=0.86.ckpt",
       "architecture": "ResNet152",
       "overrides": {
         "batch_size": 64
@@ -38,8 +38,8 @@
     },
     {
       "name": "ModelE",
-      "_identifier": "ckpt_r_ignore_3x_ep2_2",
-      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.87.ckpt",
+      "_identifier": "ckpt_r_ignore_3_ep2_1",
+      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.86.ckpt",
       "architecture": "ResNet152",
       "overrides": {
         "batch_size": 64
@@ -55,11 +55,11 @@
     },
     "thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_results_bad_model_mix_distinctiveness_weighted_f1/002_validation_thresholds_5m_20250618_094026/thresholds.npy",
     "distinctiveness_files": [
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity/Inceptionv4/ckpt_i_ignore_3_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_LRP/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_LRP/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_LRP/Inceptionv4/ckpt_i_ignore_3_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_LRP/ResNet152/ckpt_r_ignore_2_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_LRP/ResNet152/ckpt_r_ignore_3_ep2_1_class_wise_distinctiveness.json"
     ]
   },
 
@@ -71,22 +71,22 @@
     "umap_metric": "cosine"
   },
   "output": {
-    "results_dir": "ensemble_results_bad_model_mix_distinctiveness_weighted_f1",
-    "experiment_name": "002_validation_threshold_5m",
+    "results_dir": "ensemble_results_LRP/ensemble_results_initial_run_distinctiveness_weighted_f1",
+    "experiment_name": "001_validation_threshold_5m",
     "plot_models_analysis": true
   },
 
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "LRP",
-      "map_folder": "saliency_maps_LRP",
-      "cache_folder": "heatmap_cache_LRP",
-      "manifold_name": "ckpt_r_ignore_2"
+      "method": "GradCAM",
+      "map_folder": "saliency_maps_GradCAM",
+      "cache_folder": "heatmap_cache_GradCAM",
+      "manifold_name": "ckpt_i_ignore_3"
     },
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity"
+      "output_folder": "distinctiveness_cos_similarity_GradCAM"
     }
   }
 }

@@ -45,8 +45,8 @@ def create_parser():
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # Inf not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=64, help='The batch size which will be passed to the model')
-    parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
+    parser.add_argument('--model', type=str, default='Inceptionv4', help='specify model name')
+    parser.add_argument('--ckpt', type=str, default=ckpt_i_ignore_3, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
@@ -55,7 +55,7 @@ def create_parser():
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='get', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside
@@ -266,10 +266,10 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
         gt_labels   = torch.tensor(agg_gt.values)
         #******************** get max prob per view end ********************
 
+    # VALIDATION SET
     if not model_args.run_test:
         predictions = utils.threshold_based_predictions(probs, model_args.sigmoid_threshold, tasks)
         
-        # Move to CPU (logits from model_run are already concatenated across batches)
         probs = probs.cpu()
         predictions = predictions.cpu()
 
@@ -296,7 +296,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
             print("Plot the ROC curves")
             utils.plot_roc(predictions=probs, ground_truth=gt_labels, tasks=tasks)    
 
-        # If threshold tuning is enabled, compute optimal per-class thresholds based on F1 score
+        # Compute optimal per-class thresholds based on F1 score, if threshold tuning is enabled.
         if model_args.tune_thresholds:
             probs_np = probs.numpy()
             labels_np = gt_labels.numpy()
@@ -349,7 +349,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                                         preds=tuned_predictions, 
                                         tasks=tasks)
 
-            # compute averages over the subset of interest
+            # Average for eval_tasks
             avg_youden = sum(youden[task] for task in eval_tasks) / len(eval_tasks)
             avg_f1    = sum(f1[task]    for task in eval_tasks) / len(eval_tasks)
 
@@ -357,7 +357,6 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                 "accuracy": float(acc),
                 "youden_index":    { task: float(youden[task]) for task in tasks },
                 "f1_score":        { task: float(f1[task])    for task in tasks },
-                # new averages for your selected eval_tasks
                 "average_youden_index": float(avg_youden),
                 "average_f1_score":      float(avg_f1)
             }

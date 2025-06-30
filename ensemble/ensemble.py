@@ -18,6 +18,7 @@ class ModelEnsemble:
     def predict_loader(self, data_loader):
         all_preds, all_targets = [], []
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print("Device used in prediciton loader: %s", device)
         for images, labels in data_loader:
             images = images.to(device)
             batch_preds = self.predict_batch(images)

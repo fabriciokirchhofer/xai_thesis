@@ -1,15 +1,15 @@
 Task,Value
-No Finding,0.36
+No Finding,0.3
 Enlarged Cardiomediastinum,0.0
 Cardiomegaly,0.06
 Lung Opacity,0.0
-Lung Lesion,0.25
-Edema,0.47000000000000003
+Lung Lesion,0.37
+Edema,0.51
 Consolidation,0.07
-Pneumonia,0.06
-Atelectasis,0.14
-Pneumothorax,0.01
-Pleural Effusion,0.08
-Pleural Other,0.01
+Pneumonia,0.04
+Atelectasis,0.09
+Pneumothorax,0.02
+Pleural Effusion,0.05
+Pleural Other,0.0
 Fracture,0.0
-Support Devices,0.14
+Support Devices,0.28

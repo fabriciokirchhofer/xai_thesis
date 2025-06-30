@@ -10,9 +10,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch.nn.functional as F
 from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
-from run_models import parse_arguments
 
-model_args = parse_arguments()
 
 
 
@@ -63,6 +61,10 @@ def generate_gradcam_heatmap(model:torch.nn.Module,
     Returns:
         2D heatmap as a NumPy array.
     """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Device for evaluation:", device)
+    input_tensor = input_tensor.to(device)
+
     grad_cam = LayerGradCam(forward_func=model, layer=target_layer)
     attributions = grad_cam.attribute(input_tensor, target=target_class)
     # Remove the batch dimension and convert to a NumPy array. If multi-channel, average them.
@@ -100,7 +102,9 @@ def generate_lrp_attribution(model: torch.nn.Module,
     from captum.attr import LayerLRP
     from captum.attr._utils.lrp_rules import EpsilonRule
     import torch
-    import models
+    from run_models import parse_arguments, get_model
+
+    model_args = parse_arguments()
     tasks = ['No Finding', 'Enlarged Cardiomediastinum', 'Cardiomegaly',
             'Lung Opacity', 'Lung Lesion', 'Edema',
             'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
@@ -108,8 +112,11 @@ def generate_lrp_attribution(model: torch.nn.Module,
     
 
     # 1) Define / load your model
-    model = models.ResNet152(tasks=tasks, model_args=model_args)
+    model = get_model(model_args.model, tasks, model_args)
     model.eval()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    input_tensor = input_tensor.to(device)
     layer = get_target_layer(model=model)
 
     # 2) Assign a custom epsilon rule to each Conv2d/Linear
@@ -128,7 +135,7 @@ def generate_lrp_attribution(model: torch.nn.Module,
     ### End experiment
     # Original running
     # Initialize LRP object
-    #lrp = LayerLRP(model, rule="epsilon", epsilon=1e-4)
+    #lrp = LayerLRP(model)
 
     # Compute attributions for the target class
     #attributions = lrp.attribute(input_tensor, target=target_class)

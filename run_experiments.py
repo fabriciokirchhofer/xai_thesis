@@ -99,6 +99,7 @@ def main():
     ensemble_cfg = config.get('ensemble', {})
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
     strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, **ensemble_cfg)
+    print(f"Return value of strategy funciton: {strategy_fn}")
     ensemble_preds = strategy_fn(model_preds)
 
     all_targets = []
@@ -106,7 +107,7 @@ def main():
         all_targets.append(labels.numpy())
     all_targets = np.vstack(all_targets)
 
-    # Per patient get view with xax prob
+    # Per patient get view with max prob
     ensemble_preds, all_targets = utils.get_max_prob_per_view(probs=ensemble_preds,
                                                         gt_labels=all_targets,
                                                         tasks=tasks,
