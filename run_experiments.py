@@ -20,7 +20,7 @@ def main():
     parent_parser.add_argument(
         '--config',        
         type=str,
-        default='config_leave1out.json', # TODO: For some reason I can not pass it in the terminal. It seems unrecognized. Why?
+        default='config.json', # TODO: For some reason I can not pass it in the terminal. It seems unrecognized. Why?
         help='Path to JSON config file'
     )
     args = parent_parser.parse_args()
@@ -99,7 +99,6 @@ def main():
     ensemble_cfg = config.get('ensemble', {})
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
     strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, **ensemble_cfg)
-    print(f"Return value of strategy funciton: {strategy_fn}")
     ensemble_preds = strategy_fn(model_preds)
 
     all_targets = []
@@ -125,14 +124,14 @@ def main():
         print(f"Loaded thresholds from {thresholds_path}")
         print(f"Loaded thresholds: {thresholds}")
     
-    # Compute thresholds based on youden-index
+    # Compute thresholds based on F1
     elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
         print(f"Enter to threshold tuning based on {tune_cfg['metric']}")       
         thresholds, metric_scores = evaluator.find_optimal_thresholds(
             probabilities=ensemble_preds,
             ground_truth=all_targets,
             tasks=tasks,
-            metric=tune_cfg.get('metric', 'youden')
+            metric=tune_cfg.get('metric', 'f1')
         )
         print(f"Thresholds from tuning: {thresholds}")
 
@@ -198,7 +197,15 @@ def main():
         #                                 metric=eval_cfg.get('umap_metric', 'euclidean'),
         #                                 n_components=3,
         #                                 save_dir=results_dir) # scp -r fkirchhofer@nerve.artorg.unibe.ch:nerve_folder_path /Users/fabri/Desktop
-        
+
+    # if we used distinctiveness_weighted, save its weight matrix
+    if strategy_name.lower() == 'distinctiveness_weighted' and hasattr(strategy_fn, 'weight_matrix'):
+        wm = strategy_fn.weight_matrix  # this is a NumPy array of shape (n_models, n_classes)
+        wm_path = os.path.join(results_dir, 'distinctiveness_weight_matrix.json')
+        # convert to nested lists so it’s JSON‐serializable
+        with open(wm_path, 'w') as wm_file:
+            json.dump(wm.tolist(), wm_file, indent=2)
+        print(f"Saved distinctiveness weight_matrix to {wm_path}")  
 
     with open(os.path.join(results_dir, 'metrics.json'), 'w') as mf:
         json.dump(results, mf, indent=4)

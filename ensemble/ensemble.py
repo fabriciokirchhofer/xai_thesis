@@ -153,17 +153,15 @@ class StrategyFactory:
                         weight_matrix[i, j] = 1.0 / (dist_val + 1e-8)
                     else:
                         print(f"the class name: {cls_name} is not in the task list. Go back and double check!")
-            print(f"Weight matrix befroe normalization: {weight_matrix}")
             # Normalize weights across models for each class (so columns sum to 1)
             weight_matrix = weight_matrix / weight_matrix.sum(axis=0, keepdims=True)
             #weight_matrix = 1 / weight_matrix
             print(f"Weight matrix after normalizaiton: {weight_matrix}")
 
-            # Define the ensemble function using the computed weights
+            # Ensemble function using the computed weights
             def distinctiveness_fn(preds):
                 # Convert predictions list/tensor to a NumPy array of shape (M, N, C)
                 if isinstance(preds, list):
-                    print(f"The len of preds-list is {len(preds)}")
                     if torch.is_tensor(preds[0]):
                         print(f"The first element of the list is a tensor of the size: {preds[0].size()}")
                         stack = torch.stack(preds, dim=0).numpy()   # shape: (models, N, C)
@@ -186,5 +184,72 @@ class StrategyFactory:
                 weighted_sum = np.sum(stack * weight_matrix[:, np.newaxis, :], axis=0)
                 print(f"Shape of weighted_sum: {weighted_sum.shape}")
                 return weighted_sum  # shape: (N, C) NumPy array
-
+            
+            # make it accessible
+            distinctiveness_fn.weight_matrix = weight_matrix
             return distinctiveness_fn
+        
+
+        if name == 'distinctiveness_voting':
+            """
+            The model with the highest distinctiveness within the ensemble will place it's vote. Threshold is set to 0.5.
+            In the voting scheme, a value of 0.8 means “the models whose opinions count most heavily (by distinctiveness) 
+            collectively vote "yes" with 80% of the total weight."
+            """
+            # Load per-model distinctiveness dictionaries
+            distinct_vals_list = []
+            if 'distinctiveness_files' in params:
+                for path in params['distinctiveness_files']:
+                    with open(path, 'r') as f:
+                        distinct_vals_list.append(json.load(f))
+            elif 'distinctiveness_values' in params:
+                distinct_vals_list = params['distinctiveness_values']
+            else:
+                raise ValueError("Distinctiveness data required for voting: provide 'distinctiveness_files' or 'distinctiveness_values'.")
+
+            # Determine class order
+            tasks_list = params.get('class_names') or params.get('tasks')
+            if tasks_list is None:
+                tasks_list = [
+                    'No Finding','Enlarged Cardiomediastinum','Cardiomegaly',
+                    'Lung Opacity','Lung Lesion','Edema','Consolidation',
+                    'Pneumonia','Atelectasis','Pneumothorax','Pleural Effusion',
+                    'Pleural Other','Fracture','Support Devices'
+                ]
+
+            num_models = len(distinct_vals_list)
+            num_classes = len(tasks_list)
+
+            # Build inverse-distinctiveness weight matrix
+            weight_matrix = np.ones((num_models, num_classes), dtype=float)
+            for i, dist in enumerate(distinct_vals_list):
+                # fix common typo
+                if 'Pleaural Effusion' in dist:
+                    dist['Pleural Effusion'] = dist.pop('Pleaural Effusion')
+                for cls, val in dist.items():
+                    if cls in tasks_list:
+                        j = tasks_list.index(cls)
+                        weight_matrix[i, j] = 1.0 / (val + 1e-8)
+            # Normalize per-class so sum of model weights = 1
+            weight_matrix /= weight_matrix.sum(axis=0, keepdims=True)
+
+            def dv_soft(preds):
+                # preds: list of tensors or arrays, or stacked tensor
+                if isinstance(preds, list):
+                    if torch.is_tensor(preds[0]):
+                        stack = torch.stack(preds, dim=0).cpu().numpy()
+                    else:
+                        stack = np.stack(preds, axis=0)
+                elif torch.is_tensor(preds):
+                    stack = preds.cpu().numpy()
+                else:
+                    stack = np.array(preds)
+                # Binarize model outputs using 0.5
+                votes = (stack >= 0.5).astype(float)
+                # Compute weighted vote fractions
+                # weight_matrix: (M, C) -> expand to (M, 1, C)
+                weighted = votes * weight_matrix[:, np.newaxis, :]
+                soft_scores = weighted.sum(axis=0)
+                return soft_scores  # shape (N, C), in [0,1]
+
+            return dv_soft
