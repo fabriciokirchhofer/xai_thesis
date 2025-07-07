@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import json
+import pandas as pd
+from ensemble import evaluator
 
 class ModelEnsemble:
     def __init__(self, models, strategy='average', **strategy_params):
@@ -163,20 +165,14 @@ class StrategyFactory:
                 # Convert predictions list/tensor to a NumPy array of shape (M, N, C)
                 if isinstance(preds, list):
                     if torch.is_tensor(preds[0]):
-                        print(f"The first element of the list is a tensor of the size: {preds[0].size()}")
                         stack = torch.stack(preds, dim=0).numpy()   # shape: (models, N, C)
-                        print(f"Type {type(stack)}")
-                        print(f"The stacked torch tensor predictions along the first dim are now of shape: {stack.shape}")
                     else:
                         stack = np.stack(preds, axis=0)            # shape: (models, N, C)
-                        print(f"The stacked numpy predictions along the first dim are now of shape: {stack.size()}")
                 elif torch.is_tensor(preds):
-                    print(f"Predictions are a torch tensor of size: {preds.size()}")
                     stack = preds.numpy()  # already stacked tensor of shape (models, N, C)
                 else:
-                    print(f"Preds are already a numpy array of shape: {preds.shape()}")
                     stack = np.stack(preds, axis=0)
-                    print(f"Preds are now after stacking a numpy array of shape: {preds.shape()}")
+
 
                 # Compute weighted sum across model axis (axis=0) using the weight matrix
                 # Expand weight_matrix to shape (models, 1, C) for broadcasting across N samples
@@ -233,7 +229,13 @@ class StrategyFactory:
             # Normalize per-class so sum of model weights = 1
             weight_matrix /= weight_matrix.sum(axis=0, keepdims=True)
 
-            def dv_soft(preds):
+            
+            # Capture validation targets and threshold config
+            tune_cfg = params.get('threshold_tuning', {})
+            tuning_stage = tune_cfg.get('stage', 'none')
+            metric = tune_cfg.get('metric', 'f1')
+
+            def dv_soft(preds, all_targets):
                 # preds: list of tensors or arrays, or stacked tensor
                 if isinstance(preds, list):
                     if torch.is_tensor(preds[0]):
@@ -244,12 +246,109 @@ class StrategyFactory:
                     stack = preds.cpu().numpy()
                 else:
                     stack = np.array(preds)
-                # Binarize model outputs using 0.5
-                votes = (stack >= 0.5).astype(float)
+
+                
+                if tuning_stage == 'none':
+                    print("Based on config params to Test mode for labels and treshold retrival")
+                    test = True
+                    per_model_voting_thresholds_path = params['per_model_voting_thresholds_path']
+                    per_model_thresholds = np.load(per_model_voting_thresholds_path, allow_pickle=True)
+                else: 
+                    print("Based on config params to Val mode for labels retrival and threshold creation")
+                    test = False
+                    thresholds = None
+
+                votes_list = []
+                thresholds_list = []
+                # Loop over all models to get for each its maximum probability per study view
+                for idx, model_preds in enumerate(stack):
+                    votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
+                    votes_list.append(votes)
+
+                    if not test:
+                        thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
+                                                                   ground_truth=gt_labels,
+                                                                   tasks=tasks_list,
+                                                                   metric=metric)[0]
+                        print(f"Thresholds in ids{idx} are: {thresholds}")
+                        thresholds_list.append(thresholds)
+                    else:
+                        thresholds = per_model_thresholds[idx]
+                        thresholds_list.append(thresholds)
+                    
+                    # Compute threshold based labels
+                    if thresholds is not None:
+                        votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
+                                                                                     thresholds=thresholds,
+                                                                                     tasks=tasks_list).numpy()
+                    else:
+                        print("No threshold tuning applied. Will take default threshold 0.5 for each model")
+                        votes_list[-1]  = (votes_list[-1] >= 0.5).astype(float)
+
+                votes_arr = np.stack(votes_list, axis=0)
+                per_model_voting_thresholds = np.stack(thresholds_list, axis=0)
+
                 # Compute weighted vote fractions
                 # weight_matrix: (M, C) -> expand to (M, 1, C)
-                weighted = votes * weight_matrix[:, np.newaxis, :]
+                weighted = votes_arr * weight_matrix[:, np.newaxis, :]
                 soft_scores = weighted.sum(axis=0)
-                return soft_scores  # shape (N, C), in [0,1]
+                return soft_scores, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
 
             return dv_soft
+        
+
+
+# *****************************************************
+# ****************** Helper funtions ******************
+# *****************************************************
+
+def _extract_study_id(mode):
+    """
+    Args:
+        mode (bool): either False goes to 'val' and True goes to 'test'. 
+            It will then read the corresponding CSV file and extract the study ID
+            from the image file paths (assuming the study ID is encoded in the first
+            three parts of the file path, separated by '/').
+    Returns:
+        DataFrame: The CSV DataFrame with an added 'study_id' column.
+    """
+    if mode == False:
+        df = pd.read_csv('/home/fkirchhofer/data/CheXpert-v1.0/valid.csv')
+        # Apply lambda to the first column to extract the study id.
+        df['study_id'] = df.iloc[:, 0].apply(lambda x: '/'.join(x.split('/')[:3]))
+        return df
+
+    elif mode:
+        df = pd.read_csv('/home/fkirchhofer/data/CheXpert-v1.0/test.csv')
+        df['study_id'] = df.iloc[:, 0].apply(lambda x: '/'.join(x.split('/')[:3]))
+        return df
+
+    else:
+        raise ValueError("Expected either 'val' or 'test' mode, but got something else.")
+
+def _get_max_prob_per_view(probs, gt_labels, tasks: list = None, args=None):
+    # 1) bring inputs into plain numpy floats
+    if isinstance(probs, torch.Tensor):
+        probs = probs.detach().cpu().numpy()
+    if isinstance(gt_labels, torch.Tensor):
+        gt_labels = gt_labels.detach().cpu().numpy()
+
+    # 2) load study IDs
+    df = _extract_study_id(mode=args)
+
+    # 3) build DataFrames
+    prob_df = pd.DataFrame(probs, columns=tasks)
+    gt_df   = pd.DataFrame(gt_labels, columns=tasks)
+    prob_df['study_id'] = df['study_id']
+    gt_df['study_id']   = df['study_id']
+
+    # 4) group and take max per study
+    agg_prob = prob_df.groupby('study_id').max()
+    agg_gt   = gt_df.groupby('study_id').max()
+    #print(f"Current aggregated ground truth df: {agg_gt.head()}")
+
+    # 5) convert back to torch tensors of floats
+    prob_arr = agg_prob.to_numpy(dtype=np.float32)
+    gt_arr   = agg_gt.to_numpy(dtype=np.float32)
+
+    return prob_arr, gt_arr

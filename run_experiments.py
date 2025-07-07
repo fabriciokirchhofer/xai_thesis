@@ -55,10 +55,8 @@ def main():
     # Instantiate each model configuration
     models = []
     for model_cfg in config['models']:
-        #print(f"***Current m_cfg is: {model_cfg}")
         # Copy default args to preserve base settings for each model
         args_model = copy.deepcopy(base_args)
-        #print(f"args_model are: {args_model}")
 
         # Override architecture and checkpoint path per config
         args_model.model = model_cfg.get('architecture', args_model.model)
@@ -90,76 +88,122 @@ def main():
         logits = model.run_class_model()
         if config['evaluation'].get('use_logits', False):
             preds = logits.cpu()
-            print(f"Ensembly evaluation based on logits.")
+            print(f"Ensemble evaluation based on logits.")
         else:
             preds = torch.sigmoid(logits).cpu()
-            print(f"Ensembly evaluation based on probabilities.")
-        model_preds.append(preds)    
+            print(f"Ensemble evaluation based on probabilities.")
+        model_preds.append(preds)
+
+    gt_labels = []
+    for _, labels in data_loader:
+        gt_labels.append(labels.numpy())
+    gt_labels = np.vstack(gt_labels)    
 
     ensemble_cfg = config.get('ensemble', {})
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
-    strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, **ensemble_cfg)
-    ensemble_preds = strategy_fn(model_preds)
-
-    all_targets = []
-    for _, labels in data_loader:
-        all_targets.append(labels.numpy())
-    all_targets = np.vstack(all_targets)
-
-    # Per patient get view with max prob
-    ensemble_preds, all_targets = utils.get_max_prob_per_view(probs=ensemble_preds,
-                                                        gt_labels=all_targets,
-                                                        tasks=tasks,
-                                                        args=args_model)
-
-    # ************************ Threshold handling start ************************
-    tune_cfg = ensemble_cfg.get('threshold_tuning')
-    thresholds = None
-    pred_ensemble_labels = None
-    thresholds_path = ensemble_cfg.get('thresholds_path')
-
-    # Load thresholds from npy file
-    if thresholds_path and os.path.exists(thresholds_path):
-        thresholds = np.load(thresholds_path, allow_pickle=True).item()
-        print(f"Loaded thresholds from {thresholds_path}")
-        print(f"Loaded thresholds: {thresholds}")
     
-    # Compute thresholds based on F1
-    elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
-        print(f"Enter to threshold tuning based on {tune_cfg['metric']}")       
-        thresholds, metric_scores = evaluator.find_optimal_thresholds(
-            probabilities=ensemble_preds,
-            ground_truth=all_targets,
-            tasks=tasks,
-            metric=tune_cfg.get('metric', 'f1')
-        )
-        print(f"Thresholds from tuning: {thresholds}")
+# ****************** Distinctiveness voting ensemble start ******************
+    if strategy_name == 'distinctiveness_voting':
+        tune_cfg = ensemble_cfg.get('threshold_tuning')
+        pred_ensemble_labels = None
+        thresholds = None     # Thresholds for ensemble per class 
+        per_model_voting_thresholds = None # List of single model thresholds before ensemble
+        thresholds_path = ensemble_cfg.get('thresholds_path')
+    
+        strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, 
+                                                              **ensemble_cfg, 
+                                                              all_targets=gt_labels)
+        weighted_vote_fraction, gt_labels, per_model_voting_thresholds = strategy_fn(model_preds, all_targets=gt_labels)
+        ensemble_preds = weighted_vote_fraction
+                
+        # Load thresholds from npy file
+        if thresholds_path and os.path.exists(thresholds_path):
+            thresholds = np.load(thresholds_path, allow_pickle=True).item()
+            print(f"Loaded following thresholds from the voting fraction ensemble: {thresholds}")
+        
+        # Compute thresholds based on F1
+        elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
+            print(f"Enter to ensemble voting threshold tuning based on {tune_cfg['metric']}")       
+            thresholds, metric_scores = evaluator.find_optimal_thresholds(
+                probabilities=weighted_vote_fraction,
+                ground_truth=gt_labels,
+                tasks=tasks,
+                metric=tune_cfg.get('metric', 'f1')
+            )
+            print(f"Thresholds for weighted voting fraction ensemble from tuning: {thresholds}")
 
-    # Compute threshold based labels
-    if thresholds is not None:
-        pred_ensemble_labels = evaluator.threshold_based_predictions(
-            probs=torch.tensor(ensemble_preds), 
-            thresholds=thresholds, 
-            tasks=tasks
-        ).numpy()
+        # Compute threshold based labels
+        if thresholds is not None:
+            pred_ensemble_labels = evaluator.threshold_based_predictions(
+                probs=torch.tensor(weighted_vote_fraction), 
+                thresholds=thresholds, 
+                tasks=tasks
+            ).numpy()
 
+        else:
+            print("No threshold tuning applied. Will take default threshold 0.5")
+            pred_ensemble_labels = (ensemble_preds >= 0.5).astype(float)
+# ****************** Distinctiveness voting ensemble end ******************
+        
     else:
-        print("No threshold tuning applied. Will take default threshold 0.5")
-        pred_ensemble_labels = (ensemble_preds >= 0.5).astype(float)
-    # ************************ Threshold handling end ************************
+        strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, **ensemble_cfg)  
+        ensemble_preds = strategy_fn(model_preds)
+
+        # Per patient get view with max prob
+        ensemble_preds, gt_labels = utils.get_max_prob_per_view(probs=ensemble_preds,
+                                                            gt_labels=gt_labels,
+                                                            tasks=tasks,
+                                                            args=args_model)
+
+        # ************************ Threshold handling start ************************
+        tune_cfg = ensemble_cfg.get('threshold_tuning')
+        thresholds = None
+        pred_ensemble_labels = None
+        thresholds_path = ensemble_cfg.get('thresholds_path')
+
+        # Load thresholds from npy file
+        if thresholds_path and os.path.exists(thresholds_path):
+            thresholds = np.load(thresholds_path, allow_pickle=True).item()
+            print(f"Loaded thresholds from {thresholds_path}")
+            print(f"Loaded thresholds: {thresholds}")
+        
+        # Compute thresholds based on F1
+        elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
+            print(f"Enter to threshold tuning based on {tune_cfg['metric']}")       
+            thresholds, metric_scores = evaluator.find_optimal_thresholds(
+                probabilities=ensemble_preds,
+                ground_truth=gt_labels,
+                tasks=tasks,
+                metric=tune_cfg.get('metric', 'f1')
+            )
+            print(f"Thresholds from tuning: {thresholds}")
+
+        # Compute threshold based labels
+        if thresholds is not None:
+            pred_ensemble_labels = evaluator.threshold_based_predictions(
+                probs=torch.tensor(ensemble_preds), 
+                thresholds=thresholds, 
+                tasks=tasks
+            ).numpy()
+
+        else:
+            print("No threshold tuning applied. Will take default threshold 0.5")
+            pred_ensemble_labels = (ensemble_preds >= 0.5).astype(float)
+        # ************************ Threshold handling end ************************
+
 
     eval_cfg = config.get('evaluation', {})
     results = evaluator.evaluate_metrics(
         predictions=ensemble_preds,
         binary_preds=pred_ensemble_labels,
-        targets=all_targets,
+        targets=gt_labels,
         use_logits=eval_cfg.get('use_logits', False),
         metrics=eval_cfg.get('metrics', ['AUROC']),
         evaluation_sub_tasks=eval_cfg.get('evaluation_sub_tasks', eval_tasks),
         tasks=tasks
     )
     evaluator.plot_roc(predictions=ensemble_preds,
-                    ground_truth=all_targets,
+                    ground_truth=gt_labels,
                     tasks=tasks,
                     save_dir=results_dir)
     
@@ -212,9 +256,11 @@ def main():
     np.save(os.path.join(results_dir, 'ensemble_preds.npy'), ensemble_preds)
     if pred_ensemble_labels is not None:
         np.save(os.path.join(results_dir, 'ensemble_labels.npy'), pred_ensemble_labels)
-    np.save(os.path.join(results_dir, 'true_labels.npy'), all_targets)
+    np.save(os.path.join(results_dir, 'true_labels.npy'), gt_labels)
     if thresholds is not None:
         np.save(os.path.join(results_dir, 'thresholds.npy'), thresholds)
+    if per_model_voting_thresholds is not None:
+        np.save(os.path.join(results_dir, 'per_model_voting_thresholds.npy'), per_model_voting_thresholds)
 
     print(f"Experiment complete. Results saved in {results_dir}")
     
