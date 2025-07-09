@@ -80,14 +80,14 @@
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "LRP",
-      "map_folder": "saliency_maps_LRP",
-      "cache_folder": "heatmap_cache_LRP",
-      "manifold_name": "ckpt_d_ignore_1"
+      "method": "GradCAM",
+      "map_folder": "saliency_maps_GradCAM_test",
+      "cache_folder": "heatmap_cache_GradCAM_test",
+      "manifold_name": "ckpt_r_ignore_3x_ep1"
     },
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity_LRP"
+      "output_folder": "distinctiveness_cos_similarity_GradCAM_test"
     }
   }
 }

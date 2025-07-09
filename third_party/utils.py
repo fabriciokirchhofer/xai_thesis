@@ -62,8 +62,11 @@ def generate_gradcam_heatmap(model:torch.nn.Module,
         2D heatmap as a NumPy array.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device for evaluation:", device)
+    #print("Device for evaluation:", device)
     input_tensor = input_tensor.to(device)
+    model = model.to(device)
+    target_layer = target_layer.to(device)
+
 
     grad_cam = LayerGradCam(forward_func=model, layer=target_layer)
     attributions = grad_cam.attribute(input_tensor, target=target_class)

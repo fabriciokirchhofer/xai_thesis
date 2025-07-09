@@ -2,6 +2,7 @@ import torch
 import os
 import numpy as np
 from collections import defaultdict
+import datetime
 
 from run_models import parse_arguments, get_model, load_checkpoint, prepare_data
 import utils
@@ -11,6 +12,9 @@ import json
 # from utils import save_heatmap, class_distinctiveness, sum_up_distinctiveness
 # from utils import plot_distinctiveness_boxplots
 
+
+local_time_zone = datetime.timezone(datetime.timedelta(hours=2), name="CEST")
+start = datetime.datetime.now(local_time_zone)
 
 # Access all the default arguments from run_models.pys
 args = parse_arguments()
@@ -203,7 +207,16 @@ def main():
                                   normalize=True,
                                   save_path=save_dir,
                                   ckpt_name=manual_folder_name)
-               
+
+    # Time measurement
+    end = datetime.datetime.now(local_time_zone)
+    delta = end-start
+    total_seconds = int(delta.total_seconds())
+    hours   = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    print(f"Elapsed time: {hours}h {minutes}m {seconds}s")
+
     print("************************ Finished saliency_maps script ************************")
 
 
