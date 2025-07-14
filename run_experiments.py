@@ -102,13 +102,13 @@ def main():
     ensemble_cfg = config.get('ensemble', {})
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
     
+    per_model_voting_thresholds = None # List of single model thresholds before ensemble
 # ****************** Distinctiveness voting ensemble start ******************
     if strategy_name == 'distinctiveness_voting' or strategy_name == 'average_voting':
         print(f"Went into {strategy_name} strategy.")
         tune_cfg = ensemble_cfg.get('threshold_tuning')
         pred_ensemble_labels = None
         thresholds = None     # Thresholds for ensemble per class 
-        per_model_voting_thresholds = None # List of single model thresholds before ensemble
         thresholds_path = ensemble_cfg.get('thresholds_path')
     
         strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, 

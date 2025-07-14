@@ -48,7 +48,7 @@
   ],
 
   "ensemble": {
-    "strategy": "distinctiveness_voting",
+    "strategy": "distinctiveness_weighted",
     "threshold_tuning": {
       "stage": "post",
       "metric": "f1"
@@ -56,11 +56,11 @@
     "thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_distinctiveness_voting_f1/001_ttttest_val_5m_20250707_104310/thresholds.npy",
     "per_model_voting_thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_distinctiveness_voting_f1/001_ttttest_val_5m_20250707_104310/per_model_voting_thresholds.npy",
     "distinctiveness_files": [
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_IG/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_IG/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_IG/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_IG/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_IG/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
     ]
   },
 
@@ -72,7 +72,7 @@
     "umap_metric": "cosine"
   },
   "output": {
-    "results_dir": "ensemble_average_voting_BASELINE_IG_f1",
+    "results_dir": "ensemble_distinctiveness_weighted_IG_f1",
     "experiment_name": "001_val_5m",
     "plot_models_analysis": true
   },
