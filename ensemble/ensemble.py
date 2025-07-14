@@ -188,9 +188,9 @@ class StrategyFactory:
 
         if name == 'distinctiveness_voting':
             """
-            The model with the highest distinctiveness within the ensemble will place it's vote. Threshold is set to 0.5.
-            In the voting scheme, a value of 0.8 means “the models whose opinions count most heavily (by distinctiveness) 
-            collectively vote "yes" with 80% of the total weight."
+            Threshold is computed first for every model and then after for the ensemble which is distinctiveness weighted.
+            The ensemble returns a voting fraction for every class per image. For the ensemble the threshold is recomputed.
+            Threshold is set by default to 0.5.
             """
             # Load per-model distinctiveness dictionaries
             distinct_vals_list = []
@@ -295,6 +295,86 @@ class StrategyFactory:
                 return soft_scores, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
 
             return dv_soft
+        
+
+        if name == 'average_voting':
+            """
+            The models receive each equal weight. Threshold is computed first for every model and then after for the ensemble.
+            Threshold is computed for each class and is set by default to 0.5.
+            """
+            # Determine class order
+            tasks_list = params.get('class_names') or params.get('tasks')
+            if tasks_list is None:
+                tasks_list = [
+                    'No Finding','Enlarged Cardiomediastinum','Cardiomegaly',
+                    'Lung Opacity','Lung Lesion','Edema','Consolidation',
+                    'Pneumonia','Atelectasis','Pneumothorax','Pleural Effusion',
+                    'Pleural Other','Fracture','Support Devices'
+                ]
+            
+            # Capture validation targets and threshold config
+            tune_cfg = params.get('threshold_tuning', {})
+            tuning_stage = tune_cfg.get('stage', 'none')
+            metric = tune_cfg.get('metric', 'f1')
+
+            def av_soft(preds, all_targets):
+                # preds: list of tensors or arrays, or stacked tensor
+                if isinstance(preds, list):
+                    if torch.is_tensor(preds[0]):
+                        stack = torch.stack(preds, dim=0).cpu().numpy()
+                    else:
+                        stack = np.stack(preds, axis=0)
+                elif torch.is_tensor(preds):
+                    stack = preds.cpu().numpy()
+                else:
+                    stack = np.array(preds)
+
+                
+                if tuning_stage == 'none':
+                    print("Based on config params to Test mode for labels and treshold retrival")
+                    test = True
+                    per_model_voting_thresholds_path = params['per_model_voting_thresholds_path']
+                    per_model_thresholds = np.load(per_model_voting_thresholds_path, allow_pickle=True)
+                else: 
+                    print("Based on config params to Val mode for labels retrival and threshold creation")
+                    test = False
+                    thresholds = None
+
+                votes_list = []
+                thresholds_list = []
+                # Loop over all models to get for each its maximum probability per study view
+                for idx, model_preds in enumerate(stack):
+                    votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
+                    votes_list.append(votes)
+
+                    if not test:
+                        thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
+                                                                   ground_truth=gt_labels,
+                                                                   tasks=tasks_list,
+                                                                   metric=metric)[0]
+                        print(f"Thresholds in ids{idx} are: {thresholds}")
+                        thresholds_list.append(thresholds)
+                    else:
+                        thresholds = per_model_thresholds[idx]
+                        thresholds_list.append(thresholds)
+                    
+                    # Compute threshold based labels
+                    if thresholds is not None:
+                        votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
+                                                                                     thresholds=thresholds,
+                                                                                     tasks=tasks_list).numpy()
+                    else:
+                        print("No threshold tuning applied. Will take default threshold 0.5 for each model")
+                        votes_list[-1]  = (votes_list[-1] >= 0.5).astype(float)
+
+                votes_arr = np.stack(votes_list, axis=0)
+                avg_votes = np.mean(votes_arr, axis=0)
+                avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6)
+                per_model_voting_thresholds = np.stack(thresholds_list, axis=0)
+
+                return avg_votes, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
+
+            return av_soft
         
 
 

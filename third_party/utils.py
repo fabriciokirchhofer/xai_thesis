@@ -12,20 +12,18 @@ import torch.nn.functional as F
 from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
 
 
-
-
-
 #---------------------------------------------------
 # ************* Generate Saliency maps *************
 #---------------------------------------------------
-def get_target_layer(model:torch.nn.Module, layer_name:str=None)->torch.nn.Conv2d:
+def get_target_layer(model:torch.nn.Module, layer_name:str=None, method:str='gradcam')->torch.nn.Conv2d:
     """
     Retrieve the target convolutional layer for Grad-CAM.
     Args:
         model (torch.nn.Module): Input model for which the specific layer shall be retrieved.
         layer (str, optional): The layer which shall be retrieved. By default -1 to fit DenseNet121.
+        method (str, optional): The saliency method applied to access the relevant layer. By default GradCAM -> Last conv layer
     Return:
-        Specified layer of model for Grad-CAM.
+        Specified layer of model for saliency method.
     """
     # If specific layer name (str) is provided, try to retrieve:
     if layer_name:
@@ -35,16 +33,20 @@ def get_target_layer(model:torch.nn.Module, layer_name:str=None)->torch.nn.Conv2
         except AttributeError:
             print(f"Warning: Model has no attribute '{layer_name}'. Proceeding to auto-detect a convolutional layer.")
 
-        # Auto-detect: Iterate through modules to find the last Conv2d layer.
+    # Auto-detect: Iterate through modules to find layer
     target_layer = None
     for idx, module in enumerate(model.modules()):
         #print(f"Module nr {idx+1} is {module}")
         if isinstance(module, torch.nn.Conv2d):
             target_layer = module
+            ## Section for first conv layer with ResNet152 and LRP
+            # if model.__class__.__name__ == 'DenseNet121' and method=='lrp':
+            #     print(f"Idx when returning layer for LRP: {idx}")
+            #     print("Recognized Resnet")
+            #     return target_layer
     if target_layer is None:
         raise ValueError("Could not find a convolutional layer in the model.")
-    #print(f"passed module to LayerGradCam is: {target_layer}")
-    return target_layer # passed module for DenseNet121 is: Conv2d(128, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+    return target_layer
 
 
 def generate_gradcam_heatmap(model:torch.nn.Module, 
@@ -57,13 +59,15 @@ def generate_gradcam_heatmap(model:torch.nn.Module,
         model (torch.nn.Module): The trained model.
         input_tensor (torch.Tensor): Input image tensor preprocessed as required. Batch size of 1 assumed, otherwise it will run but behave wrongly.
         target_class (int): Class index for which to compute the attribution.
-        target_layer (torch.nn.Module): The layer to target for Grad-CAM. 
+        target_layer (torch.nn.Module): By default the last conv layer for Grad-CAM.
     Returns:
         2D heatmap as a NumPy array.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device for evaluation:", device)
     input_tensor = input_tensor.to(device)
+    model = model.to(device)
+    target_layer = target_layer.to(device)
+
 
     grad_cam = LayerGradCam(forward_func=model, layer=target_layer)
     attributions = grad_cam.attribute(input_tensor, target=target_class)
@@ -74,71 +78,45 @@ def generate_gradcam_heatmap(model:torch.nn.Module,
     return heatmap
 
 
-def generate_lrp_attribution(model: torch.nn.Module,
-                                    input_tensor: torch.Tensor,
-                                    target_class: int) -> np.ndarray:
+def generate_lrp_attribution(model:torch.nn.Module,
+                                    input_tensor:torch.Tensor,
+                                    target_class:int,
+                                    target_layer:torch.nn.Module) -> np.ndarray:
     """
     Generate a LRP attribution map for a given input and target class.
-
     Args:
-        model (torch.nn.Module):
-            Classification network in eval() mode. Must use ReLU activations.
-        input_tensor (torch.Tensor):
-            A single preprocessed input image of shape [1, C, H, W].
-        target_class (int):
-            Index of the output neuron (class) for which to compute attributions.
-
+        model (torch.nn.Module): Classification network in eval() mode. Must use ReLU activations.
+        input_tensor (torch.Tensor): A single preprocessed input image of shape [1, C, H, W].
+        target_class (int): Index of the output neuron (class) for which to compute attributions.
+        target_layer (torch.nn.Module): By default the last conv layer for Grad-CAM.
     Returns:
-        np.ndarray:
-            2D array of shape (H, W). If the model input has multiple channels (e.g., RGB or stacked
-            modalities), the channel-wise attributions are averaged.
+        TBD    
+
     """
-    model.eval()
-    input_tensor = input_tensor.clone().detach().requires_grad_(True)
-
-
-
-    ### Start experiment
-    from captum.attr import LayerLRP
-    from captum.attr._utils.lrp_rules import EpsilonRule
-    import torch
-    from run_models import parse_arguments, get_model
-
-    model_args = parse_arguments()
-    tasks = ['No Finding', 'Enlarged Cardiomediastinum', 'Cardiomegaly',
-            'Lung Opacity', 'Lung Lesion', 'Edema',
-            'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
-            'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices']
-    
-
-    # 1) Define / load your model
-    model = get_model(model_args.model, tasks, model_args)
-    model.eval()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
     input_tensor = input_tensor.to(device)
-    layer = get_target_layer(model=model)
+    model = model.to(device)
+    target_layer = target_layer.to(device)
 
-    # 2) Assign a custom epsilon rule to each Conv2d/Linear
+    from captum.attr._utils.lrp_rules import EpsilonRule
+    model.eval() 
+    input_tensor = input_tensor.requires_grad_(True)
+    # Apply the Epsilon LRP rule to all Conv2D and Linear layers in the model
     for module in model.modules():
-        if isinstance(module, (torch.nn.Conv2d, torch.nn.Linear)):
-            # smaller epsilon for finer stability control
-            module.rule = EpsilonRule(epsilon=1e-4)
+        if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
+            module.rule = EpsilonRule()  # attach Epsilon rule for stability in LRP
+    
+    # Initialize Captum LRP on the entire model (propagates relevance from output to input)
+    lrp = LayerLRP(model=model, layer=target_layer)
+    # Compute LRP attributions for the specified target class.
+    # This returns a tensor with the same shape as the input (e.g., 1 x 3 x H x W for an image).
+    attributions = lrp.attribute(inputs=input_tensor, 
+                                 target=target_class, 
+                                 attribute_to_layer_input=True, 
+                                 verbose=False)
+    # print(f"Shape of attribution: {attributions.size()}")
+    # print(f"The attribution: {attributions}")
 
-
-    # 4) Instantiate LayerLRP (no rule or epsilon args here!)
-    layer_lrp = LayerLRP(model, layer)
-
-    # 5) Compute attributions
-    attributions = layer_lrp.attribute(input_tensor, target=target_class)
-
-    ### End experiment
-    # Original running
-    # Initialize LRP object
-    #lrp = LayerLRP(model)
-
-    # Compute attributions for the target class
-    #attributions = lrp.attribute(input_tensor, target=target_class)
     attr = attributions.squeeze().detach().cpu().numpy()
 
     # Aggregate across channels if needed
@@ -146,6 +124,32 @@ def generate_lrp_attribution(model: torch.nn.Module,
         attr = attr.mean(axis=0)
 
     return attr
+
+
+def ig_heatmap(model:torch.nn.Module,
+                input_tensor:torch.Tensor,
+                target_class:int,
+                target_layer:torch.nn.Module) -> np.ndarray:
+    
+    from captum.attr import IntegratedGradients
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # print(f"Cuda device name for IG: {torch.cuda.get_device_name()}")
+    # input_tensor = input_tensor.to(device)
+    #model = model.to(device)
+
+    ig = IntegratedGradients(model)
+    ig_attrib = ig.attribute(input_tensor, 
+                             target=target_class, 
+                             baselines=torch.zeros_like(input_tensor))
+    heatmap_ig = ig_attrib[0].mean(dim=0).cpu().numpy()
+    # print(f"Shape of attributions: {heatmap_ig.shape}")
+    # print(f"IG attributions: {heatmap_ig}")
+
+    # Aggregate across channels if needed [C,M,N] -> [M,N]
+    if heatmap_ig.ndim == 3:
+        heatmap_ig = heatmap_ig.mean(axis=0)
+
+    return heatmap_ig
 
 
 def process_heatmap(heatmap:np.ndarray, 
@@ -165,8 +169,11 @@ def process_heatmap(heatmap:np.ndarray,
         Resized heatmap as numpy array.
     """
     # Convert heatmap to tensor with shape [1, 1, H, W]. Unsqueeze adds at dim 0 a tensor of size 1.
-    heatmap_tensor = torch.tensor(heatmap).unsqueeze(0).unsqueeze(0).float()
-    heatmap = F.interpolate(heatmap_tensor, size=target_size, mode='bilinear', align_corners=False)
+    heatmap = torch.tensor(heatmap).unsqueeze(0).unsqueeze(0).float()
+    #print(f"Target size: {target_size}\nheatmap.size: {heatmap[0, 0, :, :].size()}")
+    if target_size != heatmap[0, 0, :, :].size():
+        heatmap = F.interpolate(heatmap, size=target_size, mode='bilinear', align_corners=False)
+        print("Interpolated heatmap")
 
     if normalize:
         heatmap = (heatmap - heatmap.min()) / (heatmap.max()-heatmap.min() + 1e-8)
@@ -197,7 +204,7 @@ def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:
     
     # Convert original image from a tensor of shape [batch_size=1, 3, height, width]
     # to a numpy array of shape [height, width, 3] and apply normalization
-    img = original_img.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    img = original_img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
     img = (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
 
     overlay = (1 - alpha) * img + alpha * colored_heatmap
@@ -403,7 +410,7 @@ def plot_distinctiveness_boxplots(distinctiveness_collection: dict,
 
 
 
-# ***************************** Initial computation which does not cosine similarity but used centroid based distances ****************************
+
 # In each loop it stacks the vectors of each cls together (class-wise) 
 # and then calculates the mean and inserts it into the dictionary centroids (class-wise)
 def compute_centroids(saliency_dict: dict) -> dict:
@@ -819,85 +826,6 @@ def plot_CM(predictions, gt_labels, tasks, model_name):
     fig.tight_layout()
     fig.savefig(os.path.join(save_dir, "overall_confusion_table.png"), dpi=150)
     plt.close(fig)
-
-
-# def plot_CM(predictions, gt_labels, tasks, model_name):
-
-#     save_dir = "results/confusion_matrices"
-#     save_dir = os.path.join(save_dir, model_name)
-#     print(f"The directory where the CM will be stored: {save_dir}")
-#     os.makedirs(save_dir, exist_ok=True)
-
-#     # convert preds to numpy
-#     preds_np = predictions.numpy()
-
-#     # “viridis”, “plasma”, “inferno”
-#     cmap = 'viridis'
-
-#     # 1) Per‐task confusion matrices (as before)
-#     for i, task in enumerate(tasks):
-#         cm = confusion_matrix(gt_labels[:, i], preds_np[:, i])
-#         fig, ax = plt.subplots()
-#         im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
-#         ax.set_title(f'Confusion Matrix: {task}')
-#         ax.set_xlabel('Predicted')
-#         ax.set_ylabel('Actual')
-#         ax.set_xticks([0, 1])
-#         ax.set_yticks([0, 1])
-#         ax.set_xticklabels(['Neg', 'Pos'])
-#         ax.set_yticklabels(['Neg', 'Pos'])
-#         for (j, k), v in np.ndenumerate(cm):
-#             ax.text(k, j, v, ha='center', va='center')
-#         fig.colorbar(im, ax=ax)
-#         fig.tight_layout()
-#         fig.savefig(os.path.join(save_dir, f"{task.replace(' ', '_')}_cm.png"), dpi=150)
-#         plt.close(fig)
-
-#     # 2) One “overall” confusion‐matrix plotted like the fruit matrix
-#     #    rows = Actual task, cols = Predicted task
-
-#     # convert one‐hot to integer labels
-#     y_true = np.argmax(gt_labels, axis=1)
-#     y_pred = np.argmax(preds_np, axis=1)
-
-#     # build T×T confusion matrix
-#     cm_multi = confusion_matrix(y_true, y_pred, labels=range(len(tasks)))
-
-#     # plot grid with green diagonal, brown off‐diagonal
-#     fig, ax = plt.subplots(figsize=(len(tasks)*1.2, len(tasks)*1.2))
-#     ax.set_title("PREDICTED", fontsize=14, pad=20)
-
-#     # prepare a mask for the diagonal
-#     diag_mask = np.eye(len(tasks), dtype=bool)
-#     # colors: green on diag, brown elsewhere
-#     colors = np.where(diag_mask, '#70ad47', '#c85a0f')
-
-#     for i in range(len(tasks)):
-#         for j in range(len(tasks)):
-#             # colored square
-#             rect = plt.Rectangle((j, i), 1, 1,
-#                                  facecolor=colors[i, j],
-#                                  edgecolor='white')
-#             ax.add_patch(rect)
-#             # raw count
-#             ax.text(j + 0.5, i + 0.5, int(cm_multi[i, j]),
-#                     ha='center', va='center', color='white', fontsize=12)
-
-#     # ticks in the center of each cell
-#     ax.set_xticks(np.arange(len(tasks)) + 0.5)
-#     ax.set_yticks(np.arange(len(tasks)) + 0.5)
-#     ax.set_xticklabels(tasks, rotation=45, ha="right")
-#     ax.set_yticklabels(tasks)
-#     ax.set_xlabel("")   # label is provided by the big “PREDICTED” above
-#     ax.set_ylabel("ACTUAL", fontsize=14, labelpad=10)
-
-#     # invert y‐axis so row 0 is at the top
-#     ax.set_xlim(0, len(tasks))
-#     ax.set_ylim(len(tasks), 0)
-#     plt.tight_layout()
-
-#     fig.savefig(os.path.join(save_dir, "overall_confusion_multiclass.png"), dpi=150)
-#     plt.close(fig)
 
 
 

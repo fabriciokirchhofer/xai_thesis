@@ -17,18 +17,16 @@ import datetime
 # === USER CONFIGURATION ===
 # List of paths to your metrics.json files (between 2 and 5 entries):
 json_files = [
-    "/home/fkirchhofer/repo/xai_thesis/ensemble_results_GradCAM/ensemble_average_f1_results_baseline_v1/baseline_validation_thresholds_5m_20250602_091402/metrics.json",
-    "/home/fkirchhofer/repo/xai_thesis/ensemble_results_GradCAM/ensemble_results_average_ensemble_best_performers_f1/001_val_5m_20250702_103908/metrics.json",
-    "/home/fkirchhofer/repo/xai_thesis/ensemble_results_GradCAM/ensemble_results_average_ensemble_diversity_balanced_f1/001_val_5m_20250702_103616/metrics.json",
+    "/home/fkirchhofer/repo/xai_thesis/ensemble_results_GradCAM/ensemble_results_average_f1_BASELINE_v1/baseline_validation_thresholds_5m_20250602_091402/metrics.json",
+    "/home/fkirchhofer/repo/xai_thesis/ensemble_results_GradCAM/ensemble_results_distinctiveness_voting_f1/001_val_5m_20250707_113231/metrics.json",
     "/home/fkirchhofer/repo/xai_thesis/ensemble_results_GradCAM/ensemble_results_distinctiveness_weighted_f1/validation_thresholds_5m_20250602_093452/metrics.json"
 ]
 
 # Custom names for each ensemble, in the same order as json_files:
 model_names = [
     "Average (baseline)",
-    "Best performers",
-    "Diversity balanced",
-    "Init combination"
+    "Distinctiveness voting",
+    "Distinctiveness weighted"
     # add names corresponding to any additional files above
 ]
 
