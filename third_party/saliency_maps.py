@@ -65,7 +65,8 @@ def load_model(model_name:str='DenseNet121', tasks:list=None, model_args=None)->
     # Use parsed arguments as default if none provided
     if model_args is None:
         model_args = args
-        
+    
+    
     model = get_model(model_name, tasks, model_args)
     model = load_checkpoint(model, model_args.ckpt)
     return model
@@ -100,7 +101,8 @@ def main():
 
     # Load model, img data, and access layer to generate saliency maps
     model = load_model(model_name=args.model, tasks=tasks, model_args=args)
-    layer = utils.get_target_layer(model=model)
+    layer = utils.get_target_layer(model=model, method=method)
+    print(f"Saliency method: {method}\nModel: {model.__class__.__name__}\nPassed layer: {layer}")
     data_loader = prepare_data(args)
     saliency_dict = defaultdict(list)
     distinctiveness_collection = {}
@@ -109,15 +111,21 @@ def main():
     df = utils.extract_study_id(mode=args.run_test)
     ids = df['study_id'].str.split('/', expand=True)[1] 
 
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Cuda device name: {torch.cuda.get_device_name()}")
+    torch.cuda.empty_cache()
+    model = model.to(device)
+
     # Loop over img data
     for i, (img, _) in enumerate(data_loader):
         # _ is the label tensor (which we don't need)
         study_id = ids[i]
+        img = img.to(device)
 
         # Loop over tasks
         for target_name, idx in target_class_dict.items():
             cache_map_path = os.path.join(cache_dir, f"{study_id}_{target_name}.npz")
-
             # If already existing load heatmaps otherwise compute them
             if args.saliency=='get':
                 with np.load(cache_map_path) as dict_lookup:
@@ -135,8 +143,16 @@ def main():
                         heatmap = utils.generate_lrp_attribution(
                             model=model,
                             input_tensor=img,
-                            target_class=idx
+                            target_class=idx,
+                            target_layer=layer
                         )
+                        np.savez_compressed(cache_map_path, heatmap=heatmap)                         
+                    elif method == 'ig':
+                        heatmap = utils.ig_heatmap(
+                            model=model,
+                            input_tensor=img,
+                            target_class=idx,
+                            target_layer=layer)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -144,24 +160,37 @@ def main():
 
             # If images shall be computed first check if already existing, otherwise compute.
             elif args.saliency=='save_img':
-                if os.path.exists(cache_map_path):
-                    with np.load(cache_map_path) as d:
-                        heatmap = d['heatmap']
-                else:
+                heatmap = None
+                if os.path.exists(cache_map_path):                    
+                    try:
+                        with np.load(cache_map_path) as d:
+                            heatmap = d['heatmap']
+                    except LookupError:
+                        print("Heatmap not existing. Make sure it is available.")
+                if heatmap is None:
                     if method == "gradcam":
                         heatmap = utils.generate_gradcam_heatmap(
                             model=model,
                             input_tensor=img,
                             target_class=idx,
-                            target_layer=layer
+                            target_layer=layer,
                         )
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     elif method == "lrp":
                         heatmap = utils.generate_lrp_attribution(
                             model=model,
                             input_tensor=img,
-                            target_class=idx
+                            target_class=idx,
+                            target_layer=layer
                         )
+                        print(f"Shape of raw heatmap: {heatmap.shape}")
+                        np.savez_compressed(cache_map_path, heatmap=heatmap) 
+                    elif method == 'ig':
+                        heatmap = utils.ig_heatmap(
+                            model=model,
+                            input_tensor=img,
+                            target_class=idx,
+                            target_layer=layer)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -182,9 +211,9 @@ def main():
                     print("Heatmap not existing. Make sure it is available in correct location.")
             else:
                 raise ValueError(f"Unknown saliency mode: {args.saliency}")
-
+            #print(f"Heatmap size: {heatmap.size}")
             heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
-                                      target_size=(10, 10), 
+                                      target_size=(320,320), 
                                       normalize=True, 
                                       flatten=True,
                                       as_tensor=False)
@@ -193,7 +222,9 @@ def main():
             saliency_dict[target_name].append(heatmap_vector)
         
         distinctiveness = utils.class_distinctiveness(saliency_dict, function=dist_func)
-        distinctiveness_collection = utils.sum_up_distinctiveness(distinctiveness_collection, distinctiveness)
+        distinctiveness_collection = utils.sum_up_distinctiveness(
+                                            collection=distinctiveness_collection,
+                                            new_scores=distinctiveness)
     
     save_dir = os.path.join(base_dir, dist_output_root, args.model)
     os.makedirs(save_dir, exist_ok=True)

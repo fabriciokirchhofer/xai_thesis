@@ -103,7 +103,8 @@ def main():
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
     
 # ****************** Distinctiveness voting ensemble start ******************
-    if strategy_name == 'distinctiveness_voting':
+    if strategy_name == 'distinctiveness_voting' or strategy_name == 'average_voting':
+        print(f"Went into {strategy_name} strategy.")
         tune_cfg = ensemble_cfg.get('threshold_tuning')
         pred_ensemble_labels = None
         thresholds = None     # Thresholds for ensemble per class 
