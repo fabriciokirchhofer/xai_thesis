@@ -114,12 +114,10 @@ class StrategyFactory:
                     with open(file_path, 'r') as f:
                         distinct_vals_list.append(json.load(f))
                 print(f"These is the list with the dist values: {distinct_vals_list}")
-
             elif params.get('distinctiveness_values'):
                 # Accept distinctiveness values directly (list of dicts or lists)
                 print("Got em from list")
                 distinct_vals_list = params['distinctiveness_values']
-
             else:
                 raise ValueError("Distinctiveness data not provided. Please specify 'distinctiveness_files' or "
                                  "'distinctiveness_values'")
@@ -142,7 +140,7 @@ class StrategyFactory:
             # Initialize weight matrix (models x classes) with ones. Default value which will be used for normalization.
             weight_matrix = np.ones((num_models, num_classes), dtype=float)
 
-            # Fill weight matrix using inverse distinctiveness for known classes
+            
             for i, dist_dict in enumerate(distinct_vals_list):
                 # Fix possible key mismatch (e.g., "Pleaural Effusion" typo)
                 if 'Pleaural Effusion' in dist_dict:
@@ -151,13 +149,12 @@ class StrategyFactory:
                 for cls_name, dist_val in dist_dict.items():
                     if cls_name in tasks_list:
                         j = tasks_list.index(cls_name)
-                        # Inverse distinctiveness as weight (add tiny epsilon to avoid div-by-zero)
-                        weight_matrix[i, j] = 1.0 / (dist_val + 1e-8)
+                        weight_matrix[i, j] = dist_val
                     else:
                         print(f"the class name: {cls_name} is not in the task list. Go back and double check!")
             # Normalize weights across models for each class (so columns sum to 1)
             weight_matrix = weight_matrix / weight_matrix.sum(axis=0, keepdims=True)
-            #weight_matrix = 1 / weight_matrix
+            #weight_matrix = 1 / weight_matrix # Inversion for ablation
             print(f"Weight matrix after normalizaiton: {weight_matrix}")
 
             # Ensemble function using the computed weights
@@ -179,8 +176,7 @@ class StrategyFactory:
                 print(f"Weighted matrix extended: {weight_matrix[:, np.newaxis, :].shape}")
                 weighted_sum = np.sum(stack * weight_matrix[:, np.newaxis, :], axis=0)
                 print(f"Shape of weighted_sum: {weighted_sum.shape}")
-                return weighted_sum  # shape: (N, C) NumPy array
-            
+                return weighted_sum  # shape: (N, C) NumPy array            
             # make it accessible
             distinctiveness_fn.weight_matrix = weight_matrix
             return distinctiveness_fn
@@ -216,7 +212,6 @@ class StrategyFactory:
             num_models = len(distinct_vals_list)
             num_classes = len(tasks_list)
 
-            # Build inverse-distinctiveness weight matrix
             weight_matrix = np.ones((num_models, num_classes), dtype=float)
             for i, dist in enumerate(distinct_vals_list):
                 # fix common typo
@@ -225,7 +220,7 @@ class StrategyFactory:
                 for cls, val in dist.items():
                     if cls in tasks_list:
                         j = tasks_list.index(cls)
-                        weight_matrix[i, j] = 1.0 / (val + 1e-8)
+                        weight_matrix[i, j] = val
             # Normalize per-class so sum of model weights = 1
             weight_matrix /= weight_matrix.sum(axis=0, keepdims=True)
 
@@ -247,7 +242,6 @@ class StrategyFactory:
                 else:
                     stack = np.array(preds)
 
-                
                 if tuning_stage == 'none':
                     print("Based on config params to Test mode for labels and treshold retrival")
                     test = True
@@ -264,7 +258,6 @@ class StrategyFactory:
                 for idx, model_preds in enumerate(stack):
                     votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
                     votes_list.append(votes)
-
                     if not test:
                         thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
                                                                    ground_truth=gt_labels,
@@ -274,8 +267,7 @@ class StrategyFactory:
                         thresholds_list.append(thresholds)
                     else:
                         thresholds = per_model_thresholds[idx]
-                        thresholds_list.append(thresholds)
-                    
+                        thresholds_list.append(thresholds)                   
                     # Compute threshold based labels
                     if thresholds is not None:
                         votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
@@ -293,7 +285,6 @@ class StrategyFactory:
                 weighted = votes_arr * weight_matrix[:, np.newaxis, :]
                 soft_scores = weighted.sum(axis=0)
                 return soft_scores, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
-
             return dv_soft
         
 
@@ -346,7 +337,6 @@ class StrategyFactory:
                 for idx, model_preds in enumerate(stack):
                     votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
                     votes_list.append(votes)
-
                     if not test:
                         thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
                                                                    ground_truth=gt_labels,
@@ -356,8 +346,7 @@ class StrategyFactory:
                         thresholds_list.append(thresholds)
                     else:
                         thresholds = per_model_thresholds[idx]
-                        thresholds_list.append(thresholds)
-                    
+                        thresholds_list.append(thresholds)                   
                     # Compute threshold based labels
                     if thresholds is not None:
                         votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
@@ -369,11 +358,10 @@ class StrategyFactory:
 
                 votes_arr = np.stack(votes_list, axis=0)
                 avg_votes = np.mean(votes_arr, axis=0)
-                #avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6) # For ablation study
+                #avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6) # Invert for ablation study
                 per_model_voting_thresholds = np.stack(thresholds_list, axis=0)
 
                 return avg_votes, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
-
             return av_soft
         
 

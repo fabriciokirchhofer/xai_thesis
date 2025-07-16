@@ -136,6 +136,8 @@ def ig_heatmap(model:torch.nn.Module,
     # print(f"Cuda device name for IG: {torch.cuda.get_device_name()}")
     # input_tensor = input_tensor.to(device)
     #model = model.to(device)
+    torch.cuda.empty_cache()
+    torch.backends.cuda.max_split_size_mb = 128
 
     ig = IntegratedGradients(model)
     ig_attrib = ig.attribute(input_tensor, 
@@ -174,7 +176,7 @@ def process_heatmap(heatmap:np.ndarray,
     #print(f"Target size: {target_size}\nheatmap.size: {heatmap[0, 0, :, :].size()}")
     if target_size != heatmap[0, 0, :, :].size():
         heatmap = F.interpolate(heatmap, size=target_size, mode='bilinear', align_corners=False)
-        print("Interpolated heatmap")
+        #print("Interpolated heatmap")
 
     if normalize:
         heatmap = (heatmap - heatmap.min()) / (heatmap.max()-heatmap.min() + 1e-8)
@@ -249,8 +251,8 @@ def class_distinctiveness(saliency_dict:dict, function:str='cosine_similarity')-
     stacked_vectors = np.stack([np.array(saliency_dict[name]).ravel() for name in class_names], axis=0)
     #print(f"***\nShape of stacked vectors: {stacked_vectors.shape}\ntype of stacked vectors {type(stacked_vectors)}")
     if function=='cosine_similarity':
-        #print(f"Compute cosine similarity of stacked vectors: {stacked_vectors}")
-        similarity_matrix = cosine_similarity(stacked_vectors)
+        # 1-cos_sim = distinctiveness
+        similarity_matrix = 1 - cosine_similarity(stacked_vectors)
     elif function=='cosine_distance':
         #print(f"Compute cosine distance of stacked vectors: {stacked_vectors}")
         # defined as 1.0 minus the cosine similarity -> range 0 to 2. 0=equal, 2=diametral opposite
