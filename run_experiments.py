@@ -257,7 +257,7 @@ def main():
     np.save(os.path.join(results_dir, 'ensemble_preds.npy'), ensemble_preds)
     if pred_ensemble_labels is not None:
         np.save(os.path.join(results_dir, 'ensemble_labels.npy'), pred_ensemble_labels)
-    np.save(os.path.join(results_dir, 'true_labels.npy'), gt_labels)
+    # np.save(os.path.join(results_dir, 'true_labels.npy'), gt_labels)
     if thresholds is not None:
         np.save(os.path.join(results_dir, 'thresholds.npy'), thresholds)
     if per_model_voting_thresholds is not None:

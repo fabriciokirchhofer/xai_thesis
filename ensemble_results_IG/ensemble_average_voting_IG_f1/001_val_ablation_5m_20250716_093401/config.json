@@ -81,13 +81,13 @@
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
       "method": "IG",
-      "map_folder": "saliency_maps_IG_200steps",
-      "cache_folder": "heatmap_cache_IG_200steps",
+      "map_folder": "saliency_maps_IG_unscaled_densenet",
+      "cache_folder": "heatmap_cache_IG_unscaled_densenet",
       "manifold_name": "ckpt_d_ignore_3"
     },
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity_IG_200steps"
+      "output_folder": "distinctiveness_cos_similarity_IG_unscaled_densenet"
     }
   }
 }

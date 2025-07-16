@@ -369,14 +369,13 @@ class StrategyFactory:
 
                 votes_arr = np.stack(votes_list, axis=0)
                 avg_votes = np.mean(votes_arr, axis=0)
-                avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6)
+                #avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6) # For ablation study
                 per_model_voting_thresholds = np.stack(thresholds_list, axis=0)
 
                 return avg_votes, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
 
             return av_soft
         
-
 
 # *****************************************************
 # ****************** Helper funtions ******************

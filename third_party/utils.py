@@ -140,7 +140,8 @@ def ig_heatmap(model:torch.nn.Module,
     ig = IntegratedGradients(model)
     ig_attrib = ig.attribute(input_tensor, 
                              target=target_class, 
-                             baselines=torch.zeros_like(input_tensor))
+                             baselines=torch.zeros_like(input_tensor),
+                             n_steps=200)
     heatmap_ig = ig_attrib[0].mean(dim=0).cpu().numpy()
     # print(f"Shape of attributions: {heatmap_ig.shape}")
     # print(f"IG attributions: {heatmap_ig}")
