@@ -104,7 +104,6 @@ def main():
     layer = utils.get_target_layer(model=model, method=method)
     print(f"Saliency method: {method}\nModel: {model.__class__.__name__}\nPassed layer: {layer}")
     data_loader = prepare_data(args)
-    saliency_dict = defaultdict(list)
     distinctiveness_collection = {}
 
     # Access the patient IDs when storing saliency maps (heatmap overlay with original iamge)
@@ -119,6 +118,7 @@ def main():
 
     # Loop over img data
     for i, (img, _) in enumerate(data_loader):
+        saliency_dict = defaultdict(list)
         # _ is the label tensor (which we don't need)
         study_id = ids[i]
         img = img.to(device)
@@ -153,6 +153,12 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer)
+                        np.savez_compressed(cache_map_path, heatmap=heatmap)
+                    elif method == "deeplift":
+                        heatmap = utils.deep_lift_heatmap(
+                            model=model,
+                            input_tensor=img,
+                            target_class=idx)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -165,6 +171,7 @@ def main():
                     try:
                         with np.load(cache_map_path) as d:
                             heatmap = d['heatmap']
+                            print("Loaded from cache.")
                     except LookupError:
                         print("Heatmap not existing. Make sure it is available.")
                 if heatmap is None:
@@ -173,8 +180,7 @@ def main():
                             model=model,
                             input_tensor=img,
                             target_class=idx,
-                            target_layer=layer,
-                        )
+                            target_layer=layer)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     elif method == "lrp":
                         heatmap = utils.generate_lrp_attribution(
@@ -191,7 +197,13 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer)
-                        np.savez_compressed(cache_map_path, heatmap=heatmap)  
+                        np.savez_compressed(cache_map_path, heatmap=heatmap)
+                    elif method == "deeplift":
+                        heatmap = utils.deep_lift_heatmap(
+                            model=model,
+                            input_tensor=img,
+                            target_class=idx)
+                        np.savez_compressed(cache_map_path, heatmap=heatmap)   
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
                 try:

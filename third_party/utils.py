@@ -136,14 +136,16 @@ def ig_heatmap(model:torch.nn.Module,
     # print(f"Cuda device name for IG: {torch.cuda.get_device_name()}")
     # input_tensor = input_tensor.to(device)
     #model = model.to(device)
-    torch.cuda.empty_cache()
-    torch.backends.cuda.max_split_size_mb = 128
 
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
     ig = IntegratedGradients(model)
-    ig_attrib = ig.attribute(input_tensor, 
+    ig_attrib, delta = ig.attribute(input_tensor, 
                              target=target_class, 
-                             baselines=torch.zeros_like(input_tensor),
-                             n_steps=200)
+                             baselines=torch.zeros_like(input_tensor).to(device),
+                             n_steps=200, # Smallest convergence delta with 80
+                             internal_batch_size=1,
+                             return_convergence_delta=True)
+    print(f"Returned convergence delta is: {delta} and device name: {torch.cuda.get_device_name()}")
     heatmap_ig = ig_attrib[0].mean(dim=0).cpu().numpy()
     # print(f"Shape of attributions: {heatmap_ig.shape}")
     # print(f"IG attributions: {heatmap_ig}")
@@ -153,6 +155,42 @@ def ig_heatmap(model:torch.nn.Module,
         heatmap_ig = heatmap_ig.mean(axis=0)
 
     return heatmap_ig
+
+from captum.attr import DeepLift
+
+def deep_lift_heatmap(model: torch.nn.Module,
+                      input_tensor: torch.Tensor,
+                      target_class: int,
+                      baseline: torch.Tensor = None) -> np.ndarray:
+    """
+    Generate a DeepLIFT attribution map for the specified input and target class.
+    Args:
+        model (torch.nn.Module): The trained model in eval mode.
+        input_tensor (torch.Tensor): Preprocessed input image of shape [1,C,H,W].
+        target_class (int): Index of the class for which to compute attributions.
+        baseline (torch.Tensor, optional): Reference input of same shape as input_tensor.
+            Defaults to all-zero baseline.
+    Returns:
+        2D heatmap as a NumPy array.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    input_tensor = input_tensor.to(device)
+    # Default baseline = zero tensor if none provided
+    if baseline is None:
+        baseline = torch.zeros_like(input_tensor).to(device)
+
+    # Compute DeepLIFT attributions
+    dl = DeepLift(model)
+    attributions = dl.attribute(inputs=input_tensor,
+                                baselines=baseline,
+                                target=target_class)
+    # attributions shape: [1, C, H, W]
+    heatmap = attributions.squeeze().detach().cpu().numpy()
+    # Aggregate over channels
+    if heatmap.ndim == 3:
+        heatmap = heatmap.mean(axis=0)
+    return heatmap
 
 
 def process_heatmap(heatmap:np.ndarray, 
@@ -199,7 +237,7 @@ def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:
         Overlay image as numpy array of shape (hight, width, channel).
     """
     # Normalize heatmap to [0, 1] using min-max scaling.
-    heatmap_norm = (heatmap - np.min(heatmap)) / (np.max(heatmap) - np.min(heatmap) + 1e-8)
+    heatmap_norm = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
     
     # will have shape [height, width, 4] (RGBA). Take only first three channels.
     cmap = plt.get_cmap('jet')
@@ -208,7 +246,7 @@ def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:
     # Convert original image from a tensor of shape [batch_size=1, 3, height, width]
     # to a numpy array of shape [height, width, 3] and apply normalization
     img = original_img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
-    img = (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
+    img = (img - img.min()) / (img.max() - img.min() + 1e-8)
 
     overlay = (1 - alpha) * img + alpha * colored_heatmap
     
