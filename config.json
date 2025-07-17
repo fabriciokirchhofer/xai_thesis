@@ -48,13 +48,13 @@
   ],
 
   "ensemble": {
-    "strategy": "average_voting",
+    "strategy": "distinctiveness_voting",
     "threshold_tuning": {
-      "stage": "post",
+      "stage": "none",
       "metric": "f1"
     },
-    "thresholds_path": "tbd",
-    "per_model_voting_thresholds_path": "tbd",
+    "thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_SANITY_CHECK__f1/001_val_distinctiveness_voting_5m_20250717_110003/thresholds.npy",
+    "per_model_voting_thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_SANITY_CHECK__f1/001_val_distinctiveness_voting_5m_20250717_110003/per_model_voting_thresholds.npy",
     "distinctiveness_files": [
       "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_IG/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
       "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_IG/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
@@ -68,12 +68,12 @@
     "metrics": ["AUROC", "F1", "Youden", "Accuracy"],
     "evaluation_sub_tasks": ["Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Pleural Effusion"],
     "use_logits": false,
-    "evaluate_test_set": false,
+    "evaluate_test_set": true,
     "umap_metric": "cosine"
   },
   "output": {
-    "results_dir": "ensemble_TEST_DISTINCTIVENESS_INVERSION_FIX_f1",
-    "experiment_name": "001_val_5m",
+    "results_dir": "ensemble_SANITY_CHECK__f1",
+    "experiment_name": "001_test_distinctiveness_voting_5m",
     "plot_models_analysis": true
   },
 
@@ -81,8 +81,8 @@
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
       "method": "IG",
-      "map_folder": "saliency_maps_IG_TTTTest",
-      "cache_folder": "heatmap_cache_IG_TTTTest",
+      "map_folder": "saliency_maps_IG",
+      "cache_folder": "heatmap_cache_IG",
       "manifold_name": "ckpt_d_ignore_1"
     },
     "distinctiveness":{

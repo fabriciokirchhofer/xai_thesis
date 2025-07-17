@@ -49,7 +49,7 @@ class StrategyFactory:
 
         # Simple average of probabilities
         if name == 'average':
-            def avg_fn(preds):
+            def avg_fn(preds, all_targets=None):
                 # preds: list of tensors or numpy arrays, or tensor
                 if isinstance(preds, list):
                     # if torch tensors, stack directly
@@ -68,10 +68,10 @@ class StrategyFactory:
 
         # Weighted average with fixed weights
         if name == 'weighted':
-            weights = params.get('weights')
+            weights = params.get('weights') # TODO: Define 'weights' in the config file. In run_experiments.py it will be called as ensemble_cfg (ca line 102)
             assert weights is not None, "Weights must be provided for weighted strategy"
             weights = np.array(weights, dtype=float)
-            def w_fn(preds):
+            def w_fn(preds, all_targets=None):
                 # preds: list of tensors or numpy arrays
                 if isinstance(preds, list) and torch.is_tensor(preds[0]):
                     stack = torch.stack(preds, dim=0).numpy()
@@ -92,13 +92,17 @@ class StrategyFactory:
 
         # Majority voting thresholded at vote_threshold
         if name == 'voting':
-            thresh = params.get('vote_threshold', 0.5)
-            def v_fn(preds):
+            thresh = params.get('vote_threshold', None)
+            if thresh == None:
+                print("No thresholds passed - will take default 0.5")
+                thresh = 0.5
+            def v_fn(preds, all_targets=None):
                 # preds: list of tensors or numpy arrays
                 if isinstance(preds, list) and torch.is_tensor(preds[0]):
                     arr = torch.stack(preds, dim=0).numpy()
                 else:
                     arr = np.stack(preds, axis=0)
+                    print(f"Thresholds: {thresh}")
                 votes = (arr >= thresh).astype(int)
                 maj = (votes.sum(axis=0) > (arr.shape[0] / 2)).astype(float)
                 return maj
@@ -158,11 +162,11 @@ class StrategyFactory:
             print(f"Weight matrix after normalizaiton: {weight_matrix}")
 
             # Ensemble function using the computed weights
-            def distinctiveness_fn(preds):
+            def distinctiveness_fn(preds, all_targets=None):
                 # Convert predictions list/tensor to a NumPy array of shape (M, N, C)
                 if isinstance(preds, list):
                     if torch.is_tensor(preds[0]):
-                        stack = torch.stack(preds, dim=0).numpy()   # shape: (models, N, C)
+                        stack = torch.stack(preds, dim=0).numpy()  # shape: (models, N, C)
                     else:
                         stack = np.stack(preds, axis=0)            # shape: (models, N, C)
                 elif torch.is_tensor(preds):
@@ -217,6 +221,7 @@ class StrategyFactory:
                 # fix common typo
                 if 'Pleaural Effusion' in dist:
                     dist['Pleural Effusion'] = dist.pop('Pleaural Effusion')
+                    print("Corrected typo in tasks. Correct it manually in the json file!")
                 for cls, val in dist.items():
                     if cls in tasks_list:
                         j = tasks_list.index(cls)
@@ -253,7 +258,7 @@ class StrategyFactory:
                     thresholds = None
 
                 votes_list = []
-                thresholds_list = []
+                threshold_arrays = []
                 # Loop over all models to get for each its maximum probability per study view
                 for idx, model_preds in enumerate(stack):
                     votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
@@ -263,11 +268,12 @@ class StrategyFactory:
                                                                    ground_truth=gt_labels,
                                                                    tasks=tasks_list,
                                                                    metric=metric)[0]
-                        print(f"Thresholds in ids{idx} are: {thresholds}")
-                        thresholds_list.append(thresholds)
+                        arr = np.array([thresholds[cls] for cls in tasks_list], dtype=float)
+                        threshold_arrays.append(arr)
+                        #thresholds_list.append(thresholds) # Before putting thresholds to array -> Fixed
                     else:
                         thresholds = per_model_thresholds[idx]
-                        thresholds_list.append(thresholds)                   
+                        threshold_arrays.append(thresholds)                   
                     # Compute threshold based labels
                     if thresholds is not None:
                         votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
@@ -278,7 +284,7 @@ class StrategyFactory:
                         votes_list[-1]  = (votes_list[-1] >= 0.5).astype(float)
 
                 votes_arr = np.stack(votes_list, axis=0)
-                per_model_voting_thresholds = np.stack(thresholds_list, axis=0)
+                per_model_voting_thresholds = np.stack(threshold_arrays, axis=0)
 
                 # Compute weighted vote fractions
                 # weight_matrix: (M, C) -> expand to (M, 1, C)
@@ -332,7 +338,7 @@ class StrategyFactory:
                     thresholds = None
 
                 votes_list = []
-                thresholds_list = []
+                threshold_arrays = []
                 # Loop over all models to get for each its maximum probability per study view
                 for idx, model_preds in enumerate(stack):
                     votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
@@ -342,11 +348,12 @@ class StrategyFactory:
                                                                    ground_truth=gt_labels,
                                                                    tasks=tasks_list,
                                                                    metric=metric)[0]
-                        print(f"Thresholds in ids{idx} are: {thresholds}")
-                        thresholds_list.append(thresholds)
+                        arr = np.array([thresholds[cls] for cls in tasks_list], dtype=float)
+                        threshold_arrays.append(arr)
+                        #thresholds_list.append(thresholds) # Before putting thresholds to array -> Fixed
                     else:
                         thresholds = per_model_thresholds[idx]
-                        thresholds_list.append(thresholds)                   
+                        threshold_arrays.append(thresholds)                   
                     # Compute threshold based labels
                     if thresholds is not None:
                         votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
@@ -359,7 +366,7 @@ class StrategyFactory:
                 votes_arr = np.stack(votes_list, axis=0)
                 avg_votes = np.mean(votes_arr, axis=0)
                 #avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6) # Invert for ablation study
-                per_model_voting_thresholds = np.stack(thresholds_list, axis=0)
+                per_model_voting_thresholds = np.stack(threshold_arrays, axis=0)
 
                 return avg_votes, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
             return av_soft

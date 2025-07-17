@@ -119,68 +119,117 @@ def evaluate_metrics(predictions: np.ndarray,
     return results
 
 
-def find_optimal_thresholds(probabilities: np.ndarray,
-                            ground_truth: np.ndarray,
-                            tasks: list,
-                            metric: str = 'f1',
-                            step: float = 0.01) -> (dict, dict): # type: ignore
+def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metric="f1"):
     """
-    Find per-class optimal thresholds to maximize a given metric.
+    Finds optimal threshold for each class based on maximizing the F1 score.
+
     Args:
-        probabilities (np.ndarray): Shape (N, C) of predicted probabilities.
-        ground_truth (np.ndarray): Shape (N, C) of true binary labels.
-        tasks (list): Class names (for reference; not used in computation).
-        metric (str): Metric to optimize: 'f1' or 'youden'.
-        step (float): Granularity of threshold search (e.g., 0.01).
+        probabilities (numpy array): Array of shape (n_samples, n_classes) containing probabilities.
+        ground_truth (numpy array): Array of shape (n_samples, n_classes) with true binary labels.
+        tasks (list of str): List of class names.
+        step (float): Step size for threshold search.
+
     Returns:
-        optimal_thresholds (dict): Mapping class index -> best threshold.
-        metric_scores (dict): Mapping class index -> best metric value at threshold.
+        optimal_thresholds (dict): Mapping from task to optimal threshold.
+        metric_score_dict (dict): Mapping from task to the achieved score ().
     """
-    n_classes = probabilities.shape[1]
-    thresholds = np.arange(0.0, 1.0 + step, step)
     optimal_thresholds = {}
-    metric_scores = {}
-
-    for task_idx in range(n_classes):
-        best_thresh = 0.5
-        best_score = -np.inf
-        y_probs = probabilities[:, task_idx]
-        y_true = ground_truth[:, task_idx]
-
-        # Skip if only one class present
-        if len(np.unique(y_true)) < 2:
-            optimal_thresholds[task_idx] = best_thresh
-            metric_scores[task_idx] = None
-            continue
-
-        # Search for the threshold that maximizes the chosen metric
+    metric_score_dict = {}
+    thresholds = np.arange(0, 1 + step, step)
+    #n_classes = probabilities.shape[1]
+    print(f"Tasks passed to find_optimal_thresholds: {tasks}")
+    for i, task in enumerate(tasks):
+        print(f"Task in find_optimal_thresholds: {task}")
+        best_metric_score = -float("inf")
+        best_threshold = 0.5  # default if nothing better is found
         for t in thresholds:
-            y_pred = (y_probs >= t).astype(int)
-            if metric.lower() == 'f1':
-                score = f1_score(y_true, y_pred, zero_division=0)
-            elif metric.lower() == 'youden':
-                tp = int(((y_true == 1) & (y_pred == 1)).sum())
-                fn = int(((y_true == 1) & (y_pred == 0)).sum())
-                tn = int(((y_true == 0) & (y_pred == 0)).sum())
-                fp = int(((y_true == 0) & (y_pred == 1)).sum())
+            preds = (probabilities[:, i] >= t).astype(int) # Bolean value (0,1) will become integer
+
+            if metric == "f1":
+                # F1-score = harmonic_mean(precision, sensitivity)=2TP/(2TP+FP+FN))
+                score = f1_score(ground_truth[:, i], preds, zero_division=0.0) # If current score better than others -> overwrite
+            elif metric == "youden":
+                # Compute confusion matrix components
+                tp = ((ground_truth[:, i] == 1) & (preds == 1)).sum()
+                fn = ((ground_truth[:, i] == 1) & (preds == 0)).sum()
+                tn = ((ground_truth[:, i] == 0) & (preds == 0)).sum()
+                fp = ((ground_truth[:, i] == 0) & (preds == 1)).sum()
                 sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
                 specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
                 score = sensitivity + specificity - 1
             else:
-                raise ValueError("Metric must be 'f1' or 'youden'.")
+                raise ValueError("Invalid metric selected. Must be either 'f1' or 'youden'.")
+            
+            if score > best_metric_score:
+                best_metric_score = score
+                best_threshold = t
+        optimal_thresholds[task] = best_threshold
+        metric_score_dict[task] = best_metric_score
+    return optimal_thresholds, metric_score_dict
 
-            if score > best_score:
-                best_score = score
-                best_thresh = t
 
-        optimal_thresholds[task_idx] = best_thresh
-        metric_scores[task_idx] = best_score
+# def find_optimal_thresholds(probabilities: np.ndarray,
+#                             ground_truth: np.ndarray,
+#                             tasks: list,
+#                             metric: str = 'f1',
+#                             step: float = 0.01) -> (dict, dict): # type: ignore
+#     """
+#     Find per-class optimal thresholds to maximize a given metric.
+#     Args:
+#         probabilities (np.ndarray): Shape (N, C) of predicted probabilities.
+#         ground_truth (np.ndarray): Shape (N, C) of true binary labels.
+#         tasks (list): Class names (for reference; not used in computation).
+#         metric (str): Metric to optimize: 'f1' or 'youden'.
+#         step (float): Granularity of threshold search (e.g., 0.01).
+#     Returns:
+#         optimal_thresholds (dict): Mapping class index -> best threshold.
+#         metric_scores (dict): Mapping class index -> best metric value at threshold.
+#     """
+#     n_classes = probabilities.shape[1]
+#     thresholds = np.arange(0.0, 1.0 + step, step)
+#     optimal_thresholds = {}
+#     metric_scores = {}
 
-    return optimal_thresholds, metric_scores
+#     for task_idx in range(n_classes):
+#         best_thresh = 0.5
+#         best_score = -np.inf
+#         y_probs = probabilities[:, task_idx]
+#         y_true = ground_truth[:, task_idx]
+
+#         # Skip if only one class present
+#         if len(np.unique(y_true)) < 2:
+#             optimal_thresholds[task_idx] = best_thresh
+#             metric_scores[task_idx] = None
+#             continue
+
+#         # Search for the threshold that maximizes the chosen metric
+#         for t in thresholds:
+#             y_pred = (y_probs >= t).astype(int)
+#             if metric.lower() == 'f1':
+#                 score = f1_score(y_true, y_pred, zero_division=0)
+#             elif metric.lower() == 'youden':
+#                 tp = int(((y_true == 1) & (y_pred == 1)).sum())
+#                 fn = int(((y_true == 1) & (y_pred == 0)).sum())
+#                 tn = int(((y_true == 0) & (y_pred == 0)).sum())
+#                 fp = int(((y_true == 0) & (y_pred == 1)).sum())
+#                 sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+#                 specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+#                 score = sensitivity + specificity - 1
+#             else:
+#                 raise ValueError("Metric must be 'f1' or 'youden'.")
+
+#             if score > best_score:
+#                 best_score = score
+#                 best_thresh = t
+
+#         optimal_thresholds[task_idx] = best_thresh
+#         metric_scores[task_idx] = best_score
+
+#     return optimal_thresholds, metric_scores
 
 
 def threshold_based_predictions(probs: torch.Tensor,
-                                thresholds: dict,
+                                thresholds,
                                 tasks: list) -> torch.Tensor:
     """
     Apply class-wise thresholds to probabilities to generate binary outputs.
@@ -192,8 +241,14 @@ def threshold_based_predictions(probs: torch.Tensor,
         torch.Tensor: Shape (N, C) of binary predictions (0.0 or 1.0).
     """
     preds = torch.zeros_like(probs)
-    for c, thresh in thresholds.items():
-        preds[:, c] = (probs[:, c] >= thresh).float()
+    if type(thresholds) == dict:
+        for class_idx, (key, thresh) in enumerate(thresholds.items()):
+            preds[:, class_idx] = (probs[:, class_idx] >= thresh).float()
+    elif type(thresholds) == np.ndarray:
+        for class_idx, thresh in enumerate(thresholds):
+            preds[:, class_idx] = (probs[:, class_idx] >= thresh).float()
+    else: 
+        print("None of the expected threshold typse received")
     return preds
 
 

@@ -103,7 +103,7 @@ def main():
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
     
     per_model_voting_thresholds = None # List of single model thresholds before ensemble
-# ****************** Distinctiveness voting ensemble start ******************
+# ****************** Soft voting ensemble start ******************
     if strategy_name == 'distinctiveness_voting' or strategy_name == 'average_voting':
         print(f"Went into {strategy_name} strategy.")
         tune_cfg = ensemble_cfg.get('threshold_tuning')
@@ -114,7 +114,9 @@ def main():
         strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, 
                                                               **ensemble_cfg, 
                                                               all_targets=gt_labels)
-        weighted_vote_fraction, gt_labels, per_model_voting_thresholds = strategy_fn(model_preds, all_targets=gt_labels)
+        weighted_vote_fraction, gt_labels, per_model_voting_thresholds = strategy_fn(model_preds, 
+                                                                                     all_targets=gt_labels)
+        
         ensemble_preds = weighted_vote_fraction
                 
         # Load thresholds from npy file
@@ -129,18 +131,16 @@ def main():
                 probabilities=weighted_vote_fraction,
                 ground_truth=gt_labels,
                 tasks=tasks,
-                metric=tune_cfg.get('metric', 'f1')
-            )
+                metric=tune_cfg.get('metric', 'f1'))
             print(f"Thresholds for weighted voting fraction ensemble from tuning: {thresholds}")
-
         # Compute threshold based labels
         if thresholds is not None:
+            print("Using the loaded thresholds for the final ensemble prediction")
             pred_ensemble_labels = evaluator.threshold_based_predictions(
                 probs=torch.tensor(weighted_vote_fraction), 
                 thresholds=thresholds, 
                 tasks=tasks
             ).numpy()
-
         else:
             print("No threshold tuning applied. Will take default threshold 0.5")
             pred_ensemble_labels = (ensemble_preds >= 0.5).astype(float)
@@ -161,6 +161,7 @@ def main():
         thresholds = None
         pred_ensemble_labels = None
         thresholds_path = ensemble_cfg.get('thresholds_path')
+        print(f"Tuning configuration: {tune_cfg}")
 
         # Load thresholds from npy file
         if thresholds_path and os.path.exists(thresholds_path):
@@ -181,6 +182,7 @@ def main():
 
         # Compute threshold based labels
         if thresholds is not None:
+            print("Use received thresholds")
             pred_ensemble_labels = evaluator.threshold_based_predictions(
                 probs=torch.tensor(ensemble_preds), 
                 thresholds=thresholds, 

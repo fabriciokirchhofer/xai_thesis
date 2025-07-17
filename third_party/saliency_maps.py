@@ -4,7 +4,7 @@ import numpy as np
 from collections import defaultdict
 import datetime
 
-from run_models import parse_arguments, get_model, load_checkpoint, prepare_data
+from run_models import parse_arguments, get_model, load_checkpoint, prepare_data, DEVICE
 import utils
 import json
 # from utils import extract_study_id, get_target_layer, generate_gradcam_heatmap
@@ -87,7 +87,7 @@ def main():
         'Edema':5,
         'Consolidation':6,
         'Atelectasis':8,
-        'Pleaural Effusion':10 # Typo fix: Pleural Effusion
+        'Pleural Effusion':10 # Typo fix: Pleural Effusion
         }
 
     # Map directory to store overlay images
@@ -111,17 +111,17 @@ def main():
     ids = df['study_id'].str.split('/', expand=True)[1] 
 
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Cuda device name: {torch.cuda.get_device_name()}")
     torch.cuda.empty_cache()
-    model = model.to(device)
+    model = model.to(DEVICE)
 
     # Loop over img data
     for i, (img, _) in enumerate(data_loader):
         saliency_dict = defaultdict(list)
         # _ is the label tensor (which we don't need)
         study_id = ids[i]
-        img = img.to(device)
+        img = img.to(DEVICE, non_blocking=True)
 
         # Loop over tasks
         for target_name, idx in target_class_dict.items():
@@ -136,16 +136,14 @@ def main():
                             model=model,
                             input_tensor=img,
                             target_class=idx,
-                            target_layer=layer
-                        )
+                            target_layer=layer)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     elif method == "lrp":
                         heatmap = utils.generate_lrp_attribution(
                             model=model,
                             input_tensor=img,
                             target_class=idx,
-                            target_layer=layer
-                        )
+                            target_layer=layer)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)                         
                     elif method == 'ig':
                         heatmap = utils.ig_heatmap(
@@ -187,8 +185,7 @@ def main():
                             model=model,
                             input_tensor=img,
                             target_class=idx,
-                            target_layer=layer
-                        )
+                            target_layer=layer)
                         print(f"Shape of raw heatmap: {heatmap.shape}")
                         np.savez_compressed(cache_map_path, heatmap=heatmap) 
                     elif method == 'ig':

@@ -137,7 +137,7 @@ def ig_heatmap(model:torch.nn.Module,
     # input_tensor = input_tensor.to(device)
     #model = model.to(device)
 
-    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ig = IntegratedGradients(model)
     ig_attrib, delta = ig.attribute(input_tensor, 
                              target=target_class, 
@@ -209,6 +209,7 @@ def process_heatmap(heatmap:np.ndarray,
     Return:
         Resized heatmap as numpy array.
     """
+    tolerance = 1e-6
     # Convert heatmap to tensor with shape [1, 1, H, W]. Unsqueeze adds at dim 0 a tensor of size 1.
     heatmap = torch.tensor(heatmap).unsqueeze(0).unsqueeze(0).float()
     #print(f"Target size: {target_size}\nheatmap.size: {heatmap[0, 0, :, :].size()}")
@@ -217,6 +218,9 @@ def process_heatmap(heatmap:np.ndarray,
         #print("Interpolated heatmap")
 
     if normalize:
+        if heatmap.max()-heatmap.min() < tolerance:
+            print("Uniform heatmap detected: skipping normalization.")
+            return None
         heatmap = (heatmap - heatmap.min()) / (heatmap.max()-heatmap.min() + 1e-8)
     if flatten:
         heatmap = torch.flatten(heatmap)
@@ -707,8 +711,7 @@ def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metri
                 specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
                 score = sensitivity + specificity - 1
             else:
-                raise ValueError("Invalid metric selected. Must be either 'f1' or 'youden'.")
-            
+                raise ValueError("Invalid metric selected. Must be either 'f1' or 'youden'.")           
             if score > best_metric_score:
                 best_metric_score = score
                 best_threshold = t

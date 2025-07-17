@@ -65,94 +65,6 @@ def get_dataloader(annotations_file, img_dir, transform=None, batch_size=1, shuf
     dataset = BasicImageDataset(annotations_file, img_dir, transform=transform, test=test)
     return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
-## Old original version
-# def compute_dataset_statistics(data_loader):
-#     """
-#     Computes and returns the mean and standard deviation of the dataset.
-#     Args:
-#         data_loader (callable) iterable dataset containing images along axis 0
-
-#     returns: A torch.tensor for mean and one for std 
-#     """
-#     total_sum = 0.0
-#     total_sq_sum = 0.0
-#     total_pixels = 0
-
-#     print("Starts calculating mean and std from dataset with *****old function*****.")
-#     for images, _ in data_loader:
-#         batch_size = images.size(0)
-#         # Flatten height and width dimensions: shape becomes [batch, channels, H*W]
-#         images = images.view(batch_size, images.size(1), -1)
-#         total_sum += images.sum(dim=(0, 2))
-#         total_sq_sum += (images ** 2).sum(dim=(0, 2))
-#         total_pixels += batch_size * images.size(2)
-
-#     mean = total_sum / total_pixels
-#     std = torch.sqrt(total_sq_sum / total_pixels - mean ** 2)
-#     return mean, std
-
-
-# # Self made version
-# def compute_dataset_statistics(data_loader):
-#     """
-#     Computes and returns the mean and standard deviation of the dataset.
-#     Args:
-#         data_loader (callable) iterable dataset containing images along axis 0
-
-#     returns: A torch.tensor for mean and one for std 
-#     """
-#     total_sum = np.zeros(3)
-#     total_sq_sum = np.zeros(3)
-#     total_pixels = 0
-
-#     print("Starts calculating mean and std from dataset with numpy function")
-#     for images, _ in data_loader:
-#         # Flatten height and width dimensions: shape becomes [batch, channels, H*W]
-#         #images = images.view(batch_size, images.size(1), -1)
-#         image = images.clone().detach().numpy().reshape((3,-1))
-#         #print("Shape of image:", image.shape[1])
-
-#         total_sum += np.sum(image, axis=1)
-#         total_sq_sum += np.sum((image**2), axis=1)
-#         total_pixels += image.shape[1]
-
-#     mean = total_sum / total_pixels
-#     std = np.sqrt(total_sq_sum / total_pixels - mean ** 2)
-#     return mean, std
-
-# # Chat GPT version with numpy
-# def compute_dataset_statistics(data_loader):
-#     """
-#     Computes per‑channel mean and std over a dataset.
-
-#     Args:
-#         data_loader: yields (images, labels), where images is a torch.Tensor
-#                      of shape (B, C, H, W) and dtype float32.
-
-#     Returns:
-#         mean: np.ndarray of shape (C,)
-#         std:  np.ndarray of shape (C,)
-#     """
-#     # Peek to get channel count
-#     first_batch = next(iter(data_loader))[0]
-#     C = first_batch.shape[1]
-
-#     total_sum    = np.zeros(C)
-#     total_sq_sum = np.zeros(C)
-#     total_pixels = 0
-#     print("Starting to calculcate statistics with chatGPT numpy version")
-#     for images, _ in data_loader:
-#         np_img = images.cpu().numpy()       # (B, C, H, W)
-#         np_img = np_img.reshape(C, -1)      # (C, B*H*W)
-#         total_sum    += np_img.sum(axis=1)
-#         total_sq_sum += (np_img**2).sum(axis=1)
-#         total_pixels += np_img.shape[1]
-
-#     mean = total_sum / total_pixels
-#     std  = np.sqrt(total_sq_sum / total_pixels - mean**2)
-#     return mean, std
-
-# ChatGPT version with torch
 def compute_dataset_statistics(data_loader, device='cpu'):
     """
     Computes per‑channel mean and std over a dataset using PyTorch.
@@ -245,15 +157,6 @@ if __name__ == '__main__':
         transforms.Resize((320, 320))
     ])
 
-    # ****************** No resizing version starts ******************
-    # dataset = BasicImageDataset(val_data_labels_path, val_data_img_path, transform=None)
-    # mean, std = compute_dataset_statistics_no_resize(dataset)
-
-    # print("Dataset mean without resizing:", mean)
-    # print("Dataset std without resizing:", std)
-
-
-    # ****************** No resizing version ends ******************
     
     #Create a DataLoader using the factory function
     loader = get_dataloader(train_data_labels_path, train_data_img_path, transform=basic_transform, batch_size=64)

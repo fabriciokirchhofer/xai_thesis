@@ -4,13 +4,13 @@ import torch
 from torchvision import transforms
 import json
 # python -m third_party.run_models
-# import third_party.utils as utils
-# import third_party.dataset as dataset
-# import third_party.models as models
+import third_party.utils as utils
+import third_party.dataset as dataset
+import third_party.models as models
 
-import utils
-import dataset
-import models
+# import utils
+# import dataset
+# import models
 
 # from third_party import utils
 # from third_party import dataset
@@ -19,7 +19,7 @@ import models
 import csv
 import pandas as pd
 
-
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 path_dir = os.path.expanduser('~/repo/xai_thesis/third_party/pretrainedmodels/')
 # Calculated on validation set average AUROC over atelectasis, cardiomegaly, consolidation, edema, and pleural effusion
 # DenseNet121
@@ -107,31 +107,6 @@ def load_checkpoint(model, checkpoint_path):
 # Prep dataset
 def prepare_data(model_args):
 
-    # Start calculating statistics with chatGPT version torch
-    # DenseNet121 AUROC: 0.8245074203947084
-    # Dataset mean: tensor([0.5032, 0.5032, 0.5032])
-    # Dataset std: tensor([0.2919, 0.2919, 0.2919])
-
-    # Starting to calculcate statistics with chatGPT numpy version
-    # DenseNet121 AUROC: 0.8245287537280417
-    # Dataset mean: [0.50320443 0.50320443 0.50320443]
-    # Dataset std: [0.29185723 0.29185723 0.29185723]
-
-    # Starts calculating mean and std from dataset with numpy function
-    # DenseNet121 AUROC: 0.8242043527725201
-    # Dataset mean: [0.50356629 0.50356629 0.50356629]
-    # Dataset std: [0.29117174 0.29117174 0.29117174]
-
-    # Starts calculating mean and std from dataset with *****old function*****.
-    # DenseNet121 AUROC: 0.8245074203947084  
-    # Dataset mean: tensor([0.5032, 0.5032, 0.5032])
-    # Dataset std: tensor([0.2919, 0.2919, 0.2919])
-
-    # Stats calculated with train set - initial
-    # DenseNet121 AUROC: 0.8243688506018418   
-    # train_mean = torch.tensor([0.5031, 0.5031, 0.5031])
-    # train_std = torch. tensor([0.2914, 0.2914, 0.2914])
-
     train_mean = torch.tensor([0.5032, 0.5032, 0.5032])
     train_std = torch.tensor([0.2919, 0.2919, 0.2919])
     size = (320, 320)
@@ -142,14 +117,6 @@ def prepare_data(model_args):
     #     train_mean = torch.tensor([0.5, 0.5, 0.5])
     #     train_std = torch.tensor([0.5, 0.5, 0.5])
     #     size = (299, 299)
-
-#     # Transform including first resize and then crop - bad results
-#     inference_transform = transforms.Compose([
-#         transforms.ConvertImageDtype(torch.float),
-#         transforms.Resize(342),  # Resize shorter side to slightly larger than target
-#         transforms.CenterCrop(299),  # Crop the center square to target dimensions
-#         transforms.Normalize(mean=train_mean, std=train_std)
-# ])
 
     # Define inference transformation pipeline for the inception v4 architecture
     inference_transform = transforms.Compose([
@@ -196,9 +163,9 @@ def prepare_data(model_args):
 # Run the model
 def model_run(model, data_loader):
     # Use GPU if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #print("Device for evaluation:", device)
-    model.to(device)
+    model.to(DEVICE)
     model.eval()
 
     print("Running model in standard multi-label mode...\n")
@@ -206,7 +173,7 @@ def model_run(model, data_loader):
     
     with torch.no_grad():
         for images, labels in data_loader:
-            images, labels = images.to(device), labels.to(device)
+            images, labels = images.to(DEVICE, non_blocking=True), labels.to(DEVICE)
             logits = model(images)
             all_logits.append(logits.cpu())
 
@@ -410,9 +377,9 @@ def run_test_with_thresholds(model, model_args, tasks, test_loader, threshold_cs
     Returns:
         dict: Dictionary with accuracy and AUROC per task.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device for test:", device)
-    model.to(device)
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Device for test:", DEVICE)
+    model.to(DEVICE)
     model.eval()
 
     # Load thresholds
@@ -424,7 +391,7 @@ def run_test_with_thresholds(model, model_args, tasks, test_loader, threshold_cs
 
     with torch.no_grad():
         for images, labels in test_loader:
-            images = images.to(device)
+            images = images.to(DEVICE)
             logits = model(images)
             all_logits.append(logits.cpu())
             all_labels.append(labels)
