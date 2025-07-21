@@ -975,9 +975,12 @@ def plot_distinctiveness_radar_from_files(distinctiveness_files,
                                           figsize: tuple = (6, 6),
                                           fill_alpha: float = 0.1,
                                           line_width: float = 1.5,
+                                          radial_ticks: list = None,
+                                          grid_kwargs: dict = None,
                                           save_path: str = None):
     """
-    Load per-class distinctiveness from JSON files and plot a radar chart.
+    Load per-class distinctiveness from JSON files and plot a radar chart with
+    optional concentric scale circles.
 
     Parameters
     ----------
@@ -991,13 +994,14 @@ def plot_distinctiveness_radar_from_files(distinctiveness_files,
         Radar fill opacity.
     line_width : float, optional
         Radar line width.
+    radial_ticks : list of float, optional
+        Which radial distances to draw grid lines and labels at. If None, picked automatically.
+    grid_kwargs : dict, optional
+        Passed to `ax.yaxis.grid(...)` (e.g. linestyle='--', color='gray').
     save_path : str, optional
         If provided, save the figure here at 300 dpi (dirs auto‑created).
-
-    Returns
-    -------
-    fig, ax : matplotlib Figure and Axes
     """
+
     # --- load JSONs
     class_names = None
     matrix = []
@@ -1017,8 +1021,17 @@ def plot_distinctiveness_radar_from_files(distinctiveness_files,
     angles = np.linspace(0, 2 * np.pi, n_classes, endpoint=False).tolist()
     angles += angles[:1]
 
+    # --- decide on radial ticks
+    ymax = max(1.0, D.max())
+    if radial_ticks is None:
+        # e.g. 5 ticks including zero, then drop zero
+        candidate = np.linspace(0, ymax, num=5)
+        radial_ticks = candidate[1:]
+    ytick_labels = [f"{rt:.2f}" for rt in radial_ticks]
+
     # --- plot
     fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(polar=True))
+
     for i, m in enumerate(models):
         vals = D[i].tolist() + [D[i][0]]
         ax.plot(angles, vals, linewidth=line_width, label=m)
@@ -1026,8 +1039,14 @@ def plot_distinctiveness_radar_from_files(distinctiveness_files,
 
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(class_names)
-    ax.set_ylim(0, max(1, D.max()))
-    ax.set_yticks([])  # hide radial ticks
+
+    ax.set_ylim(0, max(1, ymax))
+    ax.set_yticks(radial_ticks)
+    ax.set_yticklabels(ytick_labels)
+
+    grid_kwargs = grid_kwargs or {"linestyle": "--", "linewidth": 0.5, "color": "gray"}
+    ax.yaxis.grid(True, **grid_kwargs)
+
     ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
     plt.tight_layout()
 

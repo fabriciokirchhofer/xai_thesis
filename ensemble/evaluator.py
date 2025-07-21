@@ -137,9 +137,7 @@ def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metri
     metric_score_dict = {}
     thresholds = np.arange(0, 1 + step, step)
     #n_classes = probabilities.shape[1]
-    print(f"Tasks passed to find_optimal_thresholds: {tasks}")
     for i, task in enumerate(tasks):
-        print(f"Task in find_optimal_thresholds: {task}")
         best_metric_score = -float("inf")
         best_threshold = 0.5  # default if nothing better is found
         for t in thresholds:
@@ -291,7 +289,6 @@ def plot_roc(predictions:np.ndarray=None,
         # Compute ROC
         fpr, tpr, _ = roc_curve(gt, pred)
         roc_auc = auc(fpr, tpr)
-        #print(f"Plot ROC for {task}, AUC={roc_auc:.2f}")
 
         # Individual ROC plot
         fig, ax = plt.subplots(figsize=(8, 6))

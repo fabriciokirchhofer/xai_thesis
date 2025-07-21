@@ -48,7 +48,7 @@
   ],
 
   "ensemble": {
-    "strategy": "random_weighted",
+    "strategy": "distinctiveness_weighted",
     "threshold_tuning": {
       "stage": "post",
       "metric": "f1"
@@ -72,7 +72,7 @@
     "umap_metric": "cosine"
   },
   "output": {
-    "results_dir": "ensemble_random_weighted_f1",
+    "results_dir": "ensemble_distinctiveness_weighted_f1",
     "experiment_name": "001_val_5m",
     "plot_models_analysis": true
   },

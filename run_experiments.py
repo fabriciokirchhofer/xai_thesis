@@ -122,11 +122,9 @@ def main():
         # Load thresholds from npy file
         if thresholds_path and os.path.exists(thresholds_path):
             thresholds = np.load(thresholds_path, allow_pickle=True).item()
-            print(f"Loaded following thresholds from the voting fraction ensemble: {thresholds}")
-        
+            
         # Compute thresholds based on F1
-        elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
-            print(f"Enter to ensemble voting threshold tuning based on {tune_cfg['metric']}")       
+        elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':       
             thresholds, metric_scores = evaluator.find_optimal_thresholds(
                 probabilities=weighted_vote_fraction,
                 ground_truth=gt_labels,
@@ -135,7 +133,6 @@ def main():
             print(f"Thresholds for weighted voting fraction ensemble from tuning: {thresholds}")
         # Compute threshold based labels
         if thresholds is not None:
-            print("Using the loaded thresholds for the final ensemble prediction")
             pred_ensemble_labels = evaluator.threshold_based_predictions(
                 probs=torch.tensor(weighted_vote_fraction), 
                 thresholds=thresholds, 
@@ -161,7 +158,6 @@ def main():
         thresholds = None
         pred_ensemble_labels = None
         thresholds_path = ensemble_cfg.get('thresholds_path')
-        print(f"Tuning configuration: {tune_cfg}")
 
         # Load thresholds from npy file
         if thresholds_path and os.path.exists(thresholds_path):
@@ -250,6 +246,11 @@ def main():
                                                       models=model_names,
                                                       cmap="plasma",
                                                       save_path=results_dir)
+        
+        
+        utils.plot_distinctiveness_radar_from_files(distinctiveness_files=distinctiveness_files,
+                                                    models=model_names,
+                                                    save_path=results_dir)
 
 
 
@@ -259,8 +260,7 @@ def main():
         wm_path = os.path.join(results_dir, 'distinctiveness_weight_matrix.json')
         # convert to nested lists so it’s JSON‐serializable
         with open(wm_path, 'w') as wm_file:
-            json.dump(wm.tolist(), wm_file, indent=2)
-        print(f"Saved distinctiveness weight_matrix to {wm_path}")  
+            json.dump(wm.tolist(), wm_file, indent=2) 
 
     with open(os.path.join(results_dir, 'metrics.json'), 'w') as mf:
         json.dump(results, mf, indent=4)

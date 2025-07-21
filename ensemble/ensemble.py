@@ -20,7 +20,6 @@ class ModelEnsemble:
     def predict_loader(self, data_loader):
         all_preds, all_targets = [], []
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("Device used in prediciton loader: %s", device)
         for images, labels in data_loader:
             images = images.to(device)
             batch_preds = self.predict_batch(images)
@@ -102,7 +101,7 @@ class StrategyFactory:
                     arr = torch.stack(preds, dim=0).numpy()
                 else:
                     arr = np.stack(preds, axis=0)
-                    print(f"Thresholds: {thresh}")
+                    #print(f"Thresholds: {thresh}")
                 votes = (arr >= thresh).astype(int)
                 maj = (votes.sum(axis=0) > (arr.shape[0] / 2)).astype(float)
                 return maj
@@ -117,7 +116,7 @@ class StrategyFactory:
                 for file_path in distinct_files:
                     with open(file_path, 'r') as f:
                         distinct_vals_list.append(json.load(f))
-                print(f"These is the list with the dist values: {distinct_vals_list}")
+                #print(f"These is the list with the dist values: {distinct_vals_list}")
             elif params.get('distinctiveness_values'):
                 # Accept distinctiveness values directly (list of dicts or lists)
                 print("Got em from list")
@@ -130,7 +129,7 @@ class StrategyFactory:
             # If a full task list or class name list is provided, use it; otherwise assume CheXpert default order.
             class_names = params.get('class_names') or params.get('tasks')
             if class_names:
-                print(f"Got class names from config file: {class_names}")
+                #print(f"Got class names from config file: {class_names}")
                 tasks_list = class_names
             else:
                 print("Use default tasks.")
@@ -177,9 +176,8 @@ class StrategyFactory:
 
                 # Compute weighted sum across model axis (axis=0) using the weight matrix
                 # Expand weight_matrix to shape (models, 1, C) for broadcasting across N samples
-                print(f"Weighted matrix extended: {weight_matrix[:, np.newaxis, :].shape}")
                 weighted_sum = np.sum(stack * weight_matrix[:, np.newaxis, :], axis=0)
-                print(f"Shape of weighted_sum: {weighted_sum.shape}")
+                #print(f"Shape of weighted_sum: {weighted_sum.shape}")
                 return weighted_sum  # shape: (N, C) NumPy array            
             # make it accessible
             distinctiveness_fn.weight_matrix = weight_matrix
@@ -370,6 +368,41 @@ class StrategyFactory:
 
                 return avg_votes, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
             return av_soft
+        
+
+        if name == 'random_weighted':
+            # Optional seed for reproducibility
+            seed = params.get('seed', 0)
+            rng = np.random.default_rng(seed)
+            # closure to remember the one random weight vector
+            weights_holder = [None]
+
+            def rand_fn(preds, all_targets=None):
+                # stack exactly as in the other strategies
+                if isinstance(preds, list) and torch.is_tensor(preds[0]):
+                    arr = torch.stack(preds, dim=0).numpy()
+                elif isinstance(preds, list):
+                    arr = np.stack(preds, axis=0)
+                elif torch.is_tensor(preds):
+                    arr = preds.numpy()
+                else:
+                    arr = np.stack(preds, axis=0)
+
+                M = arr.shape[0]
+                # first call: draw a random vector and normalize
+                if weights_holder[0] is None:
+                    w = rng.random(M)
+                    w = w / w.sum()
+                    weights_holder[0] = w
+                    print(f"[random] picked weights: {w}")
+                else:
+                    w = weights_holder[0]
+
+                # weighted sum across the model axis
+                # same as weighted strategy
+                return np.tensordot(arr, w, axes=([0], [0]))
+
+            return rand_fn
         
 
 # *****************************************************

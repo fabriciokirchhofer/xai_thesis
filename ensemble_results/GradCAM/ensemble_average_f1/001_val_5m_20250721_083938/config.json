@@ -48,7 +48,7 @@
   ],
 
   "ensemble": {
-    "strategy": "random_weighted",
+    "strategy": "average",
     "threshold_tuning": {
       "stage": "post",
       "metric": "f1"
@@ -56,11 +56,11 @@
     "thresholds_path": "tbd",
     "per_model_voting_thresholds_path": "tbd",
     "distinctiveness_files": [
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_val_set/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_val_set/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
     ]
   },
 
@@ -72,7 +72,7 @@
     "umap_metric": "cosine"
   },
   "output": {
-    "results_dir": "ensemble_random_weighted_f1",
+    "results_dir": "ensemble_average_f1",
     "experiment_name": "001_val_5m",
     "plot_models_analysis": true
   },
