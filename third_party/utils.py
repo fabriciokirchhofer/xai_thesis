@@ -145,7 +145,7 @@ def ig_heatmap(model:torch.nn.Module,
                              n_steps=200, # Smallest convergence delta with 80
                              internal_batch_size=1,
                              return_convergence_delta=True)
-    print(f"Returned convergence delta is: {delta} and device name: {torch.cuda.get_device_name()}")
+    #print(f"Returned convergence delta is: {delta} and device name: {torch.cuda.get_device_name()}")
     heatmap_ig = ig_attrib[0].mean(dim=0).cpu().numpy()
     # print(f"Shape of attributions: {heatmap_ig.shape}")
     # print(f"IG attributions: {heatmap_ig}")
@@ -156,41 +156,70 @@ def ig_heatmap(model:torch.nn.Module,
 
     return heatmap_ig
 
-from captum.attr import DeepLift
 
-def deep_lift_heatmap(model: torch.nn.Module,
-                      input_tensor: torch.Tensor,
-                      target_class: int,
-                      baseline: torch.Tensor = None) -> np.ndarray:
-    """
-    Generate a DeepLIFT attribution map for the specified input and target class.
-    Args:
-        model (torch.nn.Module): The trained model in eval mode.
-        input_tensor (torch.Tensor): Preprocessed input image of shape [1,C,H,W].
-        target_class (int): Index of the class for which to compute attributions.
-        baseline (torch.Tensor, optional): Reference input of same shape as input_tensor.
-            Defaults to all-zero baseline.
-    Returns:
-        2D heatmap as a NumPy array.
-    """
+
+from captum.attr import LayerDeepLift
+
+def deep_lift_layer_heatmap(model, layer, input_tensor, target_class, baseline=None):
+    model = model.eval().to(input_tensor.device)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    input_tensor = input_tensor.to(device)
-    # Default baseline = zero tensor if none provided
+    layer = layer.to(device)
     if baseline is None:
-        baseline = torch.zeros_like(input_tensor).to(device)
+        baseline = torch.zeros_like(input_tensor, device=input_tensor.device)
 
-    # Compute DeepLIFT attributions
-    dl = DeepLift(model)
-    attributions = dl.attribute(inputs=input_tensor,
-                                baselines=baseline,
-                                target=target_class)
-    # attributions shape: [1, C, H, W]
-    heatmap = attributions.squeeze().detach().cpu().numpy()
+    ldl = LayerDeepLift(model=model, layer=layer)
+    attr = ldl.attribute(inputs=input_tensor,
+                         baselines=baseline,
+                         target=target_class)
+    # attr shape: [1, C, H, W]
+    heatmap = attr.squeeze().cpu().detach().numpy().mean(axis=0)
     # Aggregate over channels
     if heatmap.ndim == 3:
         heatmap = heatmap.mean(axis=0)
     return heatmap
+
+
+# Verion only working with DenseNet121 not with ResNet152
+# from captum.attr import DeepLift
+# def deep_lift_heatmap(model: torch.nn.Module,
+#                       input_tensor: torch.Tensor,
+#                       target_class: int,
+#                       baseline: torch.Tensor = None) -> np.ndarray:
+#     """
+#     Generate a DeepLIFT attribution map for the specified input and target class.
+#     Args:
+#         model (torch.nn.Module): The trained model in eval mode.
+#         input_tensor (torch.Tensor): Preprocessed input image of shape [1,C,H,W].
+#         target_class (int): Index of the class for which to compute attributions.
+#         baseline (torch.Tensor, optional): Reference input of same shape as input_tensor.
+#             Defaults to all-zero baseline.
+#     Returns:
+#         2D heatmap as a NumPy array.
+#     """
+#     import torch.nn as nn
+#     model = model.eval()
+#     for m in model.modules():
+#         if hasattr(m, "inplace"):
+#             m.inplace = False
+
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     model = model.to(device)
+#     input_tensor = input_tensor.to(device)
+#     # Default baseline = zero tensor if none provided
+#     if baseline is None:
+#         baseline = torch.zeros_like(input_tensor).to(device)
+
+#     # Compute DeepLIFT attributions
+#     dl = DeepLift(model)
+#     attributions = dl.attribute(inputs=input_tensor,
+#                                 baselines=baseline,
+#                                 target=target_class)
+#     # attributions shape: [1, C, H, W]
+#     heatmap = attributions.squeeze().detach().cpu().numpy()
+#     # Aggregate over channels
+#     if heatmap.ndim == 3:
+#         heatmap = heatmap.mean(axis=0)
+#     return heatmap
 
 
 def process_heatmap(heatmap:np.ndarray, 
@@ -873,8 +902,143 @@ def plot_CM(predictions, gt_labels, tasks, model_name):
 
 
 
+def plot_distinctiveness_heatmap_from_files(distinctiveness_files,
+                                            models,
+                                            cmap: str = 'viridis',
+                                            figsize: tuple = (8, 6),
+                                            vmin=None,
+                                            vmax=None,
+                                            save_path: str = None):
+    """
+    Load per-class distinctiveness from JSON files and plot a heatmap.
+
+    Parameters
+    ----------
+    distinctiveness_files : list of str
+        Paths to JSON files. Each must map class_name -> distinctiveness value.
+    models : list of str
+        Model identifiers, in the same order as distinctiveness_files.
+    cmap : str or Colormap, optional
+        Matplotlib colormap.
+    figsize : tuple, optional
+        Figure size.
+    vmin, vmax : float, optional
+        Color scale limits.
+    save_path : str, optional
+        If provided, save the figure here at 300 dpi (dirs auto‑created).
+
+    Returns
+    -------
+    fig, ax : matplotlib Figure and Axes
+    """
+    # --- load JSONs into a matrix
+    class_names = None
+    matrix = []
+    for fp in distinctiveness_files:
+        with open(fp, 'r') as f:
+            data = json.load(f)
+        if class_names is None:
+            # preserve the JSON's key order if possible
+            class_names = list(data.keys())
+        else:
+            if set(data.keys()) != set(class_names):
+                raise ValueError(f"Class names in {fp} differ from previous files")
+        matrix.append([data[c] for c in class_names])
+    D = np.array(matrix)
+
+    # --- plot
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(D, aspect='auto', cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.set_yticks(np.arange(len(models)))
+    ax.set_yticklabels(models)
+    ax.set_xticks(np.arange(len(class_names)))
+    ax.set_xticklabels(class_names, rotation=45, ha='right')
+    ax.set_xlabel('Classes')
+    ax.set_ylabel('Models')
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label('Distinctiveness')
+    plt.tight_layout()
+
+    # --- save if requested
+    if save_path:
+        directory = os.path.dirname(save_path)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+        combined_path = os.path.join(save_path, 'distinctiveness_heatmap.png')
+        fig.savefig(combined_path, dpi=300)
+        plt.close(fig)
 
 
+
+def plot_distinctiveness_radar_from_files(distinctiveness_files,
+                                          models,
+                                          figsize: tuple = (6, 6),
+                                          fill_alpha: float = 0.1,
+                                          line_width: float = 1.5,
+                                          save_path: str = None):
+    """
+    Load per-class distinctiveness from JSON files and plot a radar chart.
+
+    Parameters
+    ----------
+    distinctiveness_files : list of str
+        Paths to JSON files. Each must map class_name -> distinctiveness value.
+    models : list of str
+        Model identifiers, in the same order as distinctiveness_files.
+    figsize : tuple, optional
+        Figure size.
+    fill_alpha : float, optional
+        Radar fill opacity.
+    line_width : float, optional
+        Radar line width.
+    save_path : str, optional
+        If provided, save the figure here at 300 dpi (dirs auto‑created).
+
+    Returns
+    -------
+    fig, ax : matplotlib Figure and Axes
+    """
+    # --- load JSONs
+    class_names = None
+    matrix = []
+    for fp in distinctiveness_files:
+        with open(fp, 'r') as f:
+            data = json.load(f)
+        if class_names is None:
+            class_names = list(data.keys())
+        else:
+            if set(data.keys()) != set(class_names):
+                raise ValueError(f"Class names in {fp} differ from previous files")
+        matrix.append([data[c] for c in class_names])
+    D = np.array(matrix)
+
+    # --- compute angles
+    n_classes = len(class_names)
+    angles = np.linspace(0, 2 * np.pi, n_classes, endpoint=False).tolist()
+    angles += angles[:1]
+
+    # --- plot
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(polar=True))
+    for i, m in enumerate(models):
+        vals = D[i].tolist() + [D[i][0]]
+        ax.plot(angles, vals, linewidth=line_width, label=m)
+        ax.fill(angles, vals, alpha=fill_alpha)
+
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(class_names)
+    ax.set_ylim(0, max(1, D.max()))
+    ax.set_yticks([])  # hide radial ticks
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
+    plt.tight_layout()
+
+    # --- save if requested
+    if save_path:
+        directory = os.path.dirname(save_path)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+        combined_path = os.path.join(save_path, 'distinctiveness_spider.png')
+        fig.savefig(combined_path, dpi=300)
+        plt.close(fig)
 
 
 

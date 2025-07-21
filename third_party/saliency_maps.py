@@ -153,8 +153,9 @@ def main():
                             target_layer=layer)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
-                        heatmap = utils.deep_lift_heatmap(
+                        heatmap = utils.deep_lift_layer_heatmap(
                             model=model,
+                            layer=layer,
                             input_tensor=img,
                             target_class=idx)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
@@ -196,8 +197,9 @@ def main():
                             target_layer=layer)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
-                        heatmap = utils.deep_lift_heatmap(
+                        heatmap = utils.deep_lift_layer_heatmap(
                             model=model,
+                            layer=layer,
                             input_tensor=img,
                             target_class=idx)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)   

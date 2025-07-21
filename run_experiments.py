@@ -245,6 +245,14 @@ def main():
         #                                 n_components=3,
         #                                 save_dir=results_dir) # scp -r fkirchhofer@nerve.artorg.unibe.ch:nerve_folder_path /Users/fabri/Desktop
 
+        distinctiveness_files = ensemble_cfg.get('distinctiveness_files')
+        utils.plot_distinctiveness_heatmap_from_files(distinctiveness_files=distinctiveness_files,
+                                                      models=model_names,
+                                                      cmap="plasma",
+                                                      save_path=results_dir)
+
+
+
     # if we used distinctiveness_weighted, save its weight matrix
     if strategy_name.lower() == 'distinctiveness_weighted' and hasattr(strategy_fn, 'weight_matrix'):
         wm = strategy_fn.weight_matrix  # this is a NumPy array of shape (n_models, n_classes)

@@ -72,8 +72,8 @@
     "umap_metric": "cosine"
   },
   "output": {
-    "results_dir": "ensemble_distinctiveness_weighted_f1",
-    "experiment_name": "001_val_5m",
+    "results_dir": "ensemble_PLOT_test__f1",
+    "experiment_name": "001_val_distinctiveness_weighted_5m",
     "plot_models_analysis": true
   },
 
@@ -81,13 +81,13 @@
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
       "method": "IG",
-      "map_folder": "saliency_maps_IG_val_set",
-      "cache_folder": "heatmap_cache_IG_val_set",
-      "manifold_name": "ckpt_r_ignore_3x_ep2_2"
+      "map_folder": "saliency_maps_IG",
+      "cache_folder": "heatmap_cache_IG",
+      "manifold_name": "ckpt_r_ignore_2"
     },
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity_IG_val_set"
+      "output_folder": "distinctiveness_cos_similarity_IG"
     }
   }
 }

@@ -2,7 +2,7 @@
 . /home/fkirchhofer/miniconda3/etc/profile.d/conda.sh
 conda activate xai
 
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=5
 
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
