@@ -55,7 +55,6 @@ def main():
     # Instantiate each model configuration
     models = []
     for model_cfg in config['models']:
-        # Copy default args to preserve base settings for each model
         args_model = copy.deepcopy(base_args)
 
         # Override architecture and checkpoint path per config
@@ -75,7 +74,7 @@ def main():
         model_obj = ModelWrapper(tasks=tasks, model_args=args_model)
         models.append(model_obj)
 
-    model_preds = []
+    model_probs = []
     use_test = config["evaluation"].get("evaluate_test_set", False) # alternative without default value config["evaluation"]["evaluate_test_set"]
     print(f"Test case: {use_test}")
     for i, model in enumerate(models):
@@ -92,7 +91,7 @@ def main():
         else:
             preds = torch.sigmoid(logits).cpu()
             print(f"Ensemble evaluation based on probabilities.")
-        model_preds.append(preds)
+        model_probs.append(preds)
 
     gt_labels = []
     for _, labels in data_loader:
@@ -103,7 +102,7 @@ def main():
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
     
     per_model_voting_thresholds = None # List of single model thresholds before ensemble
-# ****************** Soft voting ensemble start ******************
+    # ****************** Soft voting ensemble start ******************
     if strategy_name == 'distinctiveness_voting' or strategy_name == 'average_voting':
         print(f"Went into {strategy_name} strategy.")
         tune_cfg = ensemble_cfg.get('threshold_tuning')
@@ -114,7 +113,7 @@ def main():
         strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, 
                                                               **ensemble_cfg, 
                                                               all_targets=gt_labels)
-        weighted_vote_fraction, gt_labels, per_model_voting_thresholds = strategy_fn(model_preds, 
+        weighted_vote_fraction, gt_labels, per_model_voting_thresholds = strategy_fn(model_probs, 
                                                                                      all_targets=gt_labels)
         
         ensemble_preds = weighted_vote_fraction
@@ -141,11 +140,11 @@ def main():
         else:
             print("No threshold tuning applied. Will take default threshold 0.5")
             pred_ensemble_labels = (ensemble_preds >= 0.5).astype(float)
-# ****************** Distinctiveness voting ensemble end ******************
+    # ****************** Distinctiveness voting ensemble end ******************
         
     else:
         strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, **ensemble_cfg)  
-        ensemble_preds = strategy_fn(model_preds)
+        ensemble_preds = strategy_fn(model_probs)
 
         # Per patient get view with max prob
         ensemble_preds, gt_labels = utils.get_max_prob_per_view(probs=ensemble_preds,
@@ -153,7 +152,7 @@ def main():
                                                             tasks=tasks,
                                                             args=args_model)
 
-        # ************************ Threshold handling start ************************
+    # ************************ Threshold handling start ************************
         tune_cfg = ensemble_cfg.get('threshold_tuning')
         thresholds = None
         pred_ensemble_labels = None
@@ -190,6 +189,12 @@ def main():
             pred_ensemble_labels = (ensemble_preds >= 0.5).astype(float)
         # ************************ Threshold handling end ************************
 
+        utils.plot_threshold_effects(ensemble_probs=ensemble_preds,
+                                binary_preds=pred_ensemble_labels,
+                                thresholds=thresholds,
+                                class_names=tasks,
+                                save_path=os.path.join(results_dir, "plots/threshold_effects"))
+
 
     eval_cfg = config.get('evaluation', {})
     results = evaluator.evaluate_metrics(
@@ -211,7 +216,7 @@ def main():
     
     if output_cfg.get('plot_models_analysis', False):
         print("Plot ensemble models analysis")
-        evaluator.plot_prediction_distributions(model_preds=model_preds,
+        evaluator.plot_prediction_distributions(model_probs=model_probs,
                                                 tasks=tasks,
                                                 class_idx=None,
                                                 sample_idx=None,
@@ -220,7 +225,7 @@ def main():
                                                 model_names=model_names,
                                                 save_dir=results_dir)
         
-        evaluator.plot_prediction_distributions(model_preds=model_preds,
+        evaluator.plot_prediction_distributions(model_probs=model_probs,
                                                 tasks=tasks,
                                                 class_idx=None,
                                                 sample_idx=None,
@@ -229,11 +234,11 @@ def main():
                                                 model_names=model_names,
                                                 save_dir=results_dir)
 
-        evaluator.plot_model_correlation(model_preds=model_preds,
+        evaluator.plot_model_correlation(model_probs=model_probs,
                                         model_names=model_names,
                                         save_dir=results_dir)
         
-        # evaluator.plot_umap_model_predictions(model_preds=model_preds,
+        # evaluator.plot_umap_model_predictions(model_probs=model_probs,
         #                                 model_names=model_names,
         #                                 n_neighbors=30,
         #                                 min_dist=0.0,
@@ -251,7 +256,6 @@ def main():
         utils.plot_distinctiveness_radar_from_files(distinctiveness_files=distinctiveness_files,
                                                     models=model_names,
                                                     save_path=results_dir)
-
 
 
     # if we used distinctiveness_weighted, save its weight matrix
@@ -283,6 +287,8 @@ def main():
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
     print(f"Elapsed time: {hours}h {minutes}m {seconds}s")
+
+
 
 if __name__ == '__main__':
     main()

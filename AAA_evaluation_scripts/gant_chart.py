@@ -6,10 +6,10 @@ import openpyxl
 data_updated = {
     'Task': [
         'Planning & Literature Review', 
-        'Data Preparation & Exploratory Analysis', 
-        'Inference (create saliency maps and logits)', 
+        'Models set up & Exploratory Analysis', 
+        'Inference (create saliency maps and distinctiveness)', 
         'Experiments & Performance Evaluation', 
-        'Thesis document evaluation & plots',
+        'Inference II (experiments comparison)',
         'Thesis Writing & Documentation', 
         'Defense prep'
     ],
@@ -18,8 +18,8 @@ data_updated = {
         '2025-03-17', 
         '2025-04-15', 
         '2025-05-31',
-        '2025-09-01', 
-        '2025-09-27', 
+        '2025-08-15', 
+        '2025-09-15', 
         '2025-11-24'
     ],
     'End': [

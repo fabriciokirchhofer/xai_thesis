@@ -230,24 +230,41 @@ def threshold_based_predictions(probs: torch.Tensor,
                                 thresholds,
                                 tasks: list) -> torch.Tensor:
     """
-    Apply class-wise thresholds to probabilities to generate binary outputs.
+    Apply class‑wise thresholds to probabilities to generate binary outputs.
+    Supports both:
+      - probs.shape == (N, C): multi‑class
+      - probs.shape == (N,):   single‑class (already selected)
     Args:
-        probs (torch.Tensor): Shape (N, C) of probabilities.
-        thresholds (dict): Class-index -> threshold value.
-        tasks (list): Class names (for interface consistency).
+        probs (torch.Tensor): Shape (N, C) or (N,) of probabilities.
+        thresholds (dict or np.ndarray): per‑class thresholds.
+        tasks (list): Class names (not used here, kept for interface).
     Returns:
-        torch.Tensor: Shape (N, C) of binary predictions (0.0 or 1.0).
+        torch.Tensor: Shape matches input `probs`, with 0.0/1.0 predictions.
     """
-    preds = torch.zeros_like(probs)
-    if type(thresholds) == dict:
-        for class_idx, (key, thresh) in enumerate(thresholds.items()):
-            preds[:, class_idx] = (probs[:, class_idx] >= thresh).float()
-    elif type(thresholds) == np.ndarray:
-        for class_idx, thresh in enumerate(thresholds):
-            preds[:, class_idx] = (probs[:, class_idx] >= thresh).float()
-    else: 
-        print("None of the expected threshold typse received")
-    return preds
+    # ---- 1) single‑class case: probs dim == 1 ----
+    if probs.dim() == 1:
+        # grab the one threshold (first entry)…
+        if isinstance(thresholds, dict):
+            thresh = next(iter(thresholds.values()))
+        elif isinstance(thresholds, np.ndarray):
+            thresh = thresholds.flat[0]
+        else:
+            raise ValueError(f"Unsupported thresholds type {type(thresholds)} for 1‑D probs")
+        # …and return a 1‑D binary vector
+        return (probs >= float(thresh)).float()
+
+    # ---- 2) multi‑class case: probs dim == 2 ----
+    if probs.dim() == 2:
+        preds = torch.zeros_like(probs)
+        if isinstance(thresholds, dict):
+            for class_idx, (key, thresh) in enumerate(thresholds.items()):
+                preds[:, class_idx] = (probs[:, class_idx] >= float(thresh)).float()
+        elif isinstance(thresholds, np.ndarray):
+            for class_idx, thresh in enumerate(thresholds):
+                preds[:, class_idx] = (probs[:, class_idx] >= float(thresh)).float()
+        else:
+            raise ValueError(f"Unsupported thresholds type {type(thresholds)} for 2‑D probs")
+        return preds
 
 
 def plot_roc(predictions:np.ndarray=None, 
@@ -323,7 +340,7 @@ def plot_roc(predictions:np.ndarray=None,
     plt.close(fig_combined)
 
 
-def plot_prediction_distributions(model_preds:list, 
+def plot_prediction_distributions(model_probs:list, 
                                   tasks:list, 
                                   class_idx:int=None, 
                                   sample_idx:int=None, 
@@ -334,9 +351,9 @@ def plot_prediction_distributions(model_preds:list,
     """
     Plot the distribution of model prediction values for a given class or sample.
     Args:
-        model_preds (list of np.ndarray): Each element is an array of shape (N, C) 
+        model_probs (list of np.ndarray): Each element is an array of shape (N, C) 
             with probabilities or logits from one model for N samples and C classes.
-        tasks (list of str): Names of the classes corresponding to columns in model_preds.
+        tasks (list of str): Names of the classes corresponding to columns in model_probs.
         class_idx (int, optional): Index of the class to analyze. If provided, will plot 
             distributions of that class's predictions across models.
         sample_idx (int, optional): Index of a specific sample to analyze. If provided, 
@@ -356,7 +373,7 @@ def plot_prediction_distributions(model_preds:list,
     
     # First, convert everything to numpy arrays to avoid Tensor methods in plotting
     np_preds = []
-    for p in model_preds:
+    for p in model_probs:
         if torch.is_tensor(p):
             np_preds.append(p.detach().cpu().numpy())
         else:
@@ -366,7 +383,7 @@ def plot_prediction_distributions(model_preds:list,
     if class_idx is None and sample_idx is None:
         for idx, cls in enumerate(tasks):
             plot_prediction_distributions(
-                model_preds=np_preds,
+                model_probs=np_preds,
                 tasks=tasks,
                 class_idx=idx,
                 sample_idx=None,
@@ -427,11 +444,11 @@ def plot_prediction_distributions(model_preds:list,
 
 
 
-def plot_model_correlation(model_preds: list, model_names: list = None, save_dir:str=None):
+def plot_model_correlation(model_probs: list, model_names: list = None, save_dir:str=None):
     """
     Plot a heatmap of Pearson correlation coefficients between each pair of models' predictions.
     Args:
-        model_preds (list of np.ndarray): List of model prediction arrays of shape (N, C).
+        model_probs (list of np.ndarray): List of model prediction arrays of shape (N, C).
             All models should have predictions for the same N samples and C classes.
         model_names (list of str, optional): Names of the models for labeling axes.
         save_dir (str): Path to directory where plots should be saved.
@@ -441,7 +458,7 @@ def plot_model_correlation(model_preds: list, model_names: list = None, save_dir
 
         # First, convert everything to numpy arrays to avoid Tensor methods in plotting
     np_preds = []
-    for p in model_preds:
+    for p in model_probs:
         if torch.is_tensor(p):
             np_preds.append(p.detach().cpu().numpy())
         else:
@@ -477,7 +494,7 @@ def plot_model_correlation(model_preds: list, model_names: list = None, save_dir
 
 
 
-def plot_umap_model_predictions(model_preds: list,
+def plot_umap_model_predictions(model_probs: list,
                                  model_names: list = None,
                                  n_neighbors: int = 15,
                                  min_dist: float = 0.1,
@@ -489,8 +506,8 @@ def plot_umap_model_predictions(model_preds: list,
     in 2D or 3D, colored by model.
 
     Args:
-        model_preds (list of np.ndarray or torch.Tensor): Each element is shape (N, C).
-        model_names (list of str, optional): Names of the models, length == len(model_preds).
+        model_probs (list of np.ndarray or torch.Tensor): Each element is shape (N, C).
+        model_names (list of str, optional): Names of the models, length == len(model_probs).
         n_neighbors (int): UMAP `n_neighbors`.
         min_dist (float): UMAP `min_dist`.
         metric (str): UMAP distance metric (e.g. 'euclidean', 'cosine').
@@ -502,7 +519,7 @@ def plot_umap_model_predictions(model_preds: list,
 
     # 1) Prepare data
     mats = []
-    for p in model_preds:
+    for p in model_probs:
         if hasattr(p, 'detach'):
             mats.append(p.detach().cpu().numpy())
         else:

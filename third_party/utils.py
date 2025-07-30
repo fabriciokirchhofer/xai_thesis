@@ -1,4 +1,4 @@
-from sklearn import metrics
+#from sklearn import metrics
 from sklearn.metrics import f1_score, auc, roc_curve
 from sklearn.metrics import roc_auc_score, confusion_matrix
 from captum.attr import LayerGradCam, LayerLRP
@@ -179,7 +179,7 @@ def deep_lift_layer_heatmap(model, layer, input_tensor, target_class, baseline=N
     return heatmap
 
 
-# Verion only working with DenseNet121 not with ResNet152
+# Version only working with DenseNet121 not with ResNet152
 # from captum.attr import DeepLift
 # def deep_lift_heatmap(model: torch.nn.Module,
 #                       input_tensor: torch.Tensor,
@@ -1061,4 +1061,63 @@ def plot_distinctiveness_radar_from_files(distinctiveness_files,
 
 
 
+
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+
+def plot_threshold_effects(ensemble_probs: np.ndarray,
+                           binary_preds: np.ndarray,
+                           thresholds: dict,
+                           class_names: list,
+                           save_path: str = None,
+                           bins: int = 30):
+    """
+    Plot histograms of ensemble probabilities per class with threshold overlay,
+    separating predicted class 0 vs. 1, and optionally save the plots.
+
+    Parameters
+    ----------
+    ensemble_probs : np.ndarray
+        Array of shape (N, C) with ensemble probabilities (before thresholding).
+    binary_preds : np.ndarray
+        Array of shape (N, C) with binary predictions (after thresholding).
+    thresholds : dict
+        Dictionary mapping class names to threshold values.
+    class_names : list of str
+        Names of the classes (same order as in probs/preds).
+    save_path : str, optional
+        If provided, saves each class plot under this directory (auto-created if needed).
+    bins : int, optional
+        Number of histogram bins. Default is 30.
+
+    Returns
+    -------
+    None
+    """
+    if save_path:
+        os.makedirs(save_path, exist_ok=True)
+
+    for i, cls in enumerate(class_names):
+        probs = ensemble_probs[:, i]
+        preds = binary_preds[:, i]
+        threshold = thresholds[cls]
+
+        fig, ax = plt.subplots(figsize=(7, 4))
+
+        ax.hist(probs[preds == 0], bins=bins, alpha=0.5, label='Predicted 0', color='blue')
+        ax.hist(probs[preds == 1], bins=bins, alpha=0.5, label='Predicted 1', color='orange')
+        ax.axvline(threshold, color='red', linestyle='--', label=f'Threshold = {threshold:.2f}')
+
+        ax.set_title(f"Threshold Effect for Class: {cls}")
+        ax.set_xlabel("Ensemble Probability")
+        ax.set_ylabel("Sample Count")
+        ax.legend()
+        plt.tight_layout()
+
+        # Save if requested
+        if save_path:
+            fname = f"threshold_effect_{cls.replace(' ', '_')}.png"
+            fig.savefig(os.path.join(save_path, fname), dpi=300)
+            plt.close(fig)
 

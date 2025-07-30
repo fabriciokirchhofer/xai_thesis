@@ -44,7 +44,7 @@ def create_parser():
     parser = argparse.ArgumentParser(description="Script settings to run XAI model ensemble")
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # If not further used it can be removed
-    parser.add_argument('--batch_size', type=int, default=64, help='The batch size which will be passed to the model')
+    parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
     parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
     parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
 

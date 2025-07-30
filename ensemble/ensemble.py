@@ -156,9 +156,14 @@ class StrategyFactory:
                     else:
                         print(f"the class name: {cls_name} is not in the task list. Go back and double check!")
             # Normalize weights across models for each class (so columns sum to 1)
+            print(f"Weights before normalization: {weight_matrix}")
             weight_matrix = weight_matrix / weight_matrix.sum(axis=0, keepdims=True)
+            a = 1
+            b = 1
+            weight_matrix = a * (weight_matrix**b)
             #weight_matrix = 1 / weight_matrix # Inversion for ablation
             print(f"Weight matrix after normalizaiton: {weight_matrix}")
+            
 
             # Ensemble function using the computed weights
             def distinctiveness_fn(preds, all_targets=None):
@@ -178,6 +183,7 @@ class StrategyFactory:
                 # Expand weight_matrix to shape (models, 1, C) for broadcasting across N samples
                 weighted_sum = np.sum(stack * weight_matrix[:, np.newaxis, :], axis=0)
                 #print(f"Shape of weighted_sum: {weighted_sum.shape}")
+                #weighted_sum = weighted_sum-np.min(weighted_sum, axis=1, keepdims=True) / (np.max(weighted_sum, axis=1, keepdims=True)-np.min(weighted_sum, axis=1, keepdims=True) + 1e-8)
                 return weighted_sum  # shape: (N, C) NumPy array            
             # make it accessible
             distinctiveness_fn.weight_matrix = weight_matrix
@@ -226,6 +232,7 @@ class StrategyFactory:
                         weight_matrix[i, j] = val
             # Normalize per-class so sum of model weights = 1
             weight_matrix /= weight_matrix.sum(axis=0, keepdims=True)
+            #weight_matrix = weight_matrix**0.8
 
             
             # Capture validation targets and threshold config
@@ -287,6 +294,7 @@ class StrategyFactory:
                 # Compute weighted vote fractions
                 # weight_matrix: (M, C) -> expand to (M, 1, C)
                 weighted = votes_arr * weight_matrix[:, np.newaxis, :]
+                #weighted = weighted**0.5
                 soft_scores = weighted.sum(axis=0)
                 return soft_scores, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
             return dv_soft
