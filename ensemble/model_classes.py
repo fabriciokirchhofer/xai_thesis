@@ -2,6 +2,7 @@ import torch
 from torchvision import transforms
 from abc import ABC, abstractmethod
 from third_party import run_models, dataset, utils
+from third_party.run_models import DEVICE
 
 args = run_models.parse_arguments()
 
@@ -100,11 +101,11 @@ class BaseModelXAI(ABC):
         """
         Runs the model on a batch of images and returns sigmoid probabilities.
         """
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"device in BaseModelXAI for {args.model} is {device}")
-        self.model.to(device)
+        #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"device in BaseModelXAI for {args.model} is {DEVICE}")
+        self.model.to(DEVICE)
         self.model.eval()
-        images = images.to(device)
+        images = images.to(DEVICE)
 
         with torch.no_grad():
             logits = self.model(images)

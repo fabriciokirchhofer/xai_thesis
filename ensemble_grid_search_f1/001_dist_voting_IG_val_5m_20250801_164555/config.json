@@ -1,6 +1,4 @@
 {
-  "device": "cuda:0",
-
   "models": [
     {
       "name": "ModelA",

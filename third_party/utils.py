@@ -375,7 +375,8 @@ def per_class_distinctiveness(distinctiveness_collection:dict,
             Mapping from class name to its mean distinctiveness.
             If save_path is given, returns 0 after saving.
     """
-    # 1) raw or normalized data
+    # 1) If normalize is True then it calls normalize_distinctiveness and performs it on distinctiveness collection
+    # or -> it will keep the raw distinctiveness_collection
     data = normalize and normalize_distinctiveness(distinctiveness_collection) \
            or distinctiveness_collection
 
@@ -1121,3 +1122,16 @@ def plot_threshold_effects(ensemble_probs: np.ndarray,
             fig.savefig(os.path.join(save_path, fname), dpi=300)
             plt.close(fig)
 
+
+def plot_search_grid_heatmap(b_vals, a_vals, f1_grid, results_dir):
+    
+    # Plot heatmap
+    fig, ax = plt.subplots()
+    c = ax.pcolormesh(b_vals, a_vals, f1_grid, shading='auto')
+    fig.colorbar(c, ax=ax)
+    ax.set_xlabel('b')
+    ax.set_ylabel('a')
+    ax.set_title('Grid Search: F1 mean per (a,b)')
+    os.makedirs(results_dir, exist_ok=True)
+    fig.savefig(os.path.join(results_dir, 'grid_search_f1_heatmap.png'), dpi=300)
+    plt.close(fig)

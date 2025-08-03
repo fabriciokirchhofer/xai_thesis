@@ -3,11 +3,13 @@ import numpy as np
 import json
 import pandas as pd
 from ensemble import evaluator
+from third_party.run_models import DEVICE
 
 class ModelEnsemble:
     def __init__(self, models, strategy='average', **strategy_params):
         self.models = models
-        self.strategy_fn = StrategyFactory.get_strategy(strategy, **strategy_params)
+        self.tasks = strategy_params.pop('tasks', None) or StrategyFactory.TASKS
+        self.strategy_fn = StrategyFactory.get_strategy(strategy, tasks=self.tasks, **strategy_params)
 
     def predict_batch(self, images):
         preds = [m.predict(images).cpu() for m in self.models]
@@ -19,9 +21,9 @@ class ModelEnsemble:
 
     def predict_loader(self, data_loader):
         all_preds, all_targets = [], []
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        #device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
         for images, labels in data_loader:
-            images = images.to(device)
+            images = images.to(DEVICE)
             batch_preds = self.predict_batch(images)
             if isinstance(batch_preds, torch.Tensor):
                 all_preds.append(batch_preds.cpu())
@@ -42,8 +44,13 @@ def _mean_dist(preds_list):
     return np.sum(arr * weights, axis=-1)   
 
 class StrategyFactory:
+    TASKS = ["No Finding", "Enlarged Cardiomediastinum", "Cardiomegaly", "Lung Opacity",
+     "Lung Lesion", "Edema","Consolidation", "Pneumoni", "Atelectasis", "Pneumothorax",
+    "Pleural Effusion", "Pleural Other", "Fracture", "Support Devices"]
+
     @staticmethod
     def get_strategy(name, **params):
+        tasks_list = list(params.get('tasks') or StrategyFactory.TASKS)
         name = name.lower()
 
         # Simple average of probabilities
@@ -125,19 +132,6 @@ class StrategyFactory:
                 raise ValueError("Distinctiveness data not provided. Please specify 'distinctiveness_files' or "
                                  "'distinctiveness_values'")
 
-            # Determine class ordering (for mapping class names to prediction indices)
-            # If a full task list or class name list is provided, use it; otherwise assume CheXpert default order.
-            class_names = params.get('class_names') or params.get('tasks')
-            if class_names:
-                #print(f"Got class names from config file: {class_names}")
-                tasks_list = class_names
-            else:
-                print("Use default tasks.")
-                tasks_list = ['No Finding', 'Enlarged Cardiomediastinum', 'Cardiomegaly',
-                        'Lung Opacity', 'Lung Lesion', 'Edema',
-                        'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax',
-                        'Pleural Effusion', 'Pleural Other', 'Fracture', 'Support Devices']
-
             num_models = len(distinct_vals_list)
             num_classes = len(tasks_list)
             # Initialize weight matrix (models x classes) with ones. Default value which will be used for normalization.
@@ -145,28 +139,39 @@ class StrategyFactory:
 
             
             for i, dist_dict in enumerate(distinct_vals_list):
-                # Fix possible key mismatch (e.g., "Pleaural Effusion" typo)
-                if 'Pleaural Effusion' in dist_dict:
-                    dist_dict['Pleural Effusion'] = dist_dict.pop('Pleaural Effusion')
-                    print(f"Corrected typo in tasks.")
                 for cls_name, dist_val in dist_dict.items():
                     if cls_name in tasks_list:
                         j = tasks_list.index(cls_name)
                         weight_matrix[i, j] = dist_val
                     else:
-                        print(f"the class name: {cls_name} is not in the task list. Go back and double check!")
-            # Normalize weights across models for each class (so columns sum to 1)
+                        raise ValueError(f"the class name: {cls_name} is not in the task list. Go back and double check!")
             print(f"Weights before normalization: {weight_matrix}")
-            weight_matrix = weight_matrix / weight_matrix.sum(axis=0, keepdims=True)
-            a = 1
-            b = 1
-            weight_matrix = a * (weight_matrix**b)
-            #weight_matrix = 1 / weight_matrix # Inversion for ablation
+
+            # Normalize distinctiveness weights based on config:
+            # 'task' mode -> columns sum to 1 (per class)
+            # 'model' mode -> rows sum to 1 (per model)
+            mode = params.get('normalize_distinctiveness_by', 'model')
+            if mode == 'model':
+                # Per-model normalization: each model's row sums to 1
+                model_sum = weight_matrix.sum(axis=1, keepdims=True)
+                model_sum[model_sum == 0] = 1e-8
+                weight_matrix = weight_matrix / model_sum
+                print(f"Normalization mode: per model (rows). Weight matrix shape: {weight_matrix.shape}")
+            elif mode == 'task':
+                # Per-task normalization: each class column sums to 1 (default behavior)
+                class_sum = weight_matrix.sum(axis=0, keepdims=True)
+                class_sum[class_sum == 0] = 1e-8
+                weight_matrix = weight_matrix / class_sum
+                print(f"Normalization mode: per task (columns). Weight matrix shape: {weight_matrix.shape}")           
+            else:
+                raise ValueError (f"No valid distinctiveness normalization mode selected. Mode must be either  'model' or 'task'. Received {mode}")           
+   
+            #weight_matrix = 1 / weight_matrix # Inversion for ablation trial
             print(f"Weight matrix after normalizaiton: {weight_matrix}")
             
 
             # Ensemble function using the computed weights
-            def distinctiveness_fn(preds, all_targets=None):
+            def distinctiveness_fn(preds, all_targets=None, a_val=None, b_val=None):
                 # Convert predictions list/tensor to a NumPy array of shape (M, N, C)
                 if isinstance(preds, list):
                     if torch.is_tensor(preds[0]):
@@ -178,10 +183,11 @@ class StrategyFactory:
                 else:
                     stack = np.stack(preds, axis=0)
 
+                adjusted_weights = a_val * (weight_matrix**b_val)
 
                 # Compute weighted sum across model axis (axis=0) using the weight matrix
                 # Expand weight_matrix to shape (models, 1, C) for broadcasting across N samples
-                weighted_sum = np.sum(stack * weight_matrix[:, np.newaxis, :], axis=0)
+                weighted_sum = np.sum(stack * adjusted_weights[:, np.newaxis, :], axis=0)
                 #print(f"Shape of weighted_sum: {weighted_sum.shape}")
                 #weighted_sum = weighted_sum-np.min(weighted_sum, axis=1, keepdims=True) / (np.max(weighted_sum, axis=1, keepdims=True)-np.min(weighted_sum, axis=1, keepdims=True) + 1e-8)
                 return weighted_sum  # shape: (N, C) NumPy array            
@@ -207,96 +213,103 @@ class StrategyFactory:
             else:
                 raise ValueError("Distinctiveness data required for voting: provide 'distinctiveness_files' or 'distinctiveness_values'.")
 
-            # Determine class order
-            tasks_list = params.get('class_names') or params.get('tasks')
-            if tasks_list is None:
-                tasks_list = [
-                    'No Finding','Enlarged Cardiomediastinum','Cardiomegaly',
-                    'Lung Opacity','Lung Lesion','Edema','Consolidation',
-                    'Pneumonia','Atelectasis','Pneumothorax','Pleural Effusion',
-                    'Pleural Other','Fracture','Support Devices'
-                ]
-
             num_models = len(distinct_vals_list)
             num_classes = len(tasks_list)
-
             weight_matrix = np.ones((num_models, num_classes), dtype=float)
-            for i, dist in enumerate(distinct_vals_list):
-                # fix common typo
-                if 'Pleaural Effusion' in dist:
-                    dist['Pleural Effusion'] = dist.pop('Pleaural Effusion')
-                    print("Corrected typo in tasks. Correct it manually in the json file!")
-                for cls, val in dist.items():
-                    if cls in tasks_list:
-                        j = tasks_list.index(cls)
-                        weight_matrix[i, j] = val
-            # Normalize per-class so sum of model weights = 1
-            weight_matrix /= weight_matrix.sum(axis=0, keepdims=True)
-            #weight_matrix = weight_matrix**0.8
 
-            
+            for i, dist_dict in enumerate(distinct_vals_list):
+                for cls_name, dist_val in dist_dict.items():
+                    if cls_name in tasks_list:
+                        j = tasks_list.index(cls_name)
+                        weight_matrix[i, j] = dist_val
+                    else:
+                        raise ValueError(f"the class name: {cls_name} is not in the task list. Go back and double check!")
+            print(f"Weights before normalization: {weight_matrix}")
+       
+            # Normalize distinctiveness weights based on config:
+            # 'task' mode -> columns sum to 1 (per class)
+            # 'model' mode -> rows sum to 1 (per model)
+            mode = params.get('normalize_distinctiveness_by', 'model')
+            if mode == 'model':
+                # Per-model normalization: each model's row sums to 1
+                model_sum = weight_matrix.sum(axis=1, keepdims=True)
+                model_sum[model_sum == 0] = 1e-8
+                weight_matrix = weight_matrix / model_sum
+                print(f"Normalization mode: per model (rows). Weight matrix shape: {weight_matrix.shape}")
+            elif mode == 'task':
+                # Per-task normalization: each class column sums to 1 (default behavior)
+                class_sum = weight_matrix.sum(axis=0, keepdims=True)
+                class_sum[class_sum == 0] = 1e-8
+                weight_matrix = weight_matrix / class_sum
+                print(f"Normalization mode: per task (columns). Weight matrix shape: {weight_matrix.shape}")           
+            else:
+                raise ValueError (f"No valid distinctiveness normalization mode selected. Mode must be either  'model' or 'task'. Received {mode}")           
+   
+            #weight_matrix = 1 / weight_matrix # Inversion for ablation trial
+            print(f"Weight matrix after normalizaiton: {weight_matrix}")
+
             # Capture validation targets and threshold config
             tune_cfg = params.get('threshold_tuning', {})
             tuning_stage = tune_cfg.get('stage', 'none')
             metric = tune_cfg.get('metric', 'f1')
 
-            def dv_soft(preds, all_targets):
-                # preds: list of tensors or arrays, or stacked tensor
-                if isinstance(preds, list):
-                    if torch.is_tensor(preds[0]):
-                        stack = torch.stack(preds, dim=0).cpu().numpy()
-                    else:
-                        stack = np.stack(preds, axis=0)
-                elif torch.is_tensor(preds):
-                    stack = preds.cpu().numpy()
-                else:
-                    stack = np.array(preds)
+            def dv_soft(preds, all_targets, a_val=None, b_val=None):
+                # # preds: list of tensors or arrays, or stacked tensor
+                # if isinstance(preds, list):
+                #     if torch.is_tensor(preds[0]):
+                #         stack = torch.stack(preds, dim=0).cpu().numpy()
+                #     else:
+                #         stack = np.stack(preds, axis=0)
+                # elif torch.is_tensor(preds):
+                #     stack = preds.cpu().numpy()
+                # else:
+                #     stack = np.array(preds)
 
-                if tuning_stage == 'none':
-                    print("Based on config params to Test mode for labels and treshold retrival")
-                    test = True
-                    per_model_voting_thresholds_path = params['per_model_voting_thresholds_path']
-                    per_model_thresholds = np.load(per_model_voting_thresholds_path, allow_pickle=True)
-                else: 
-                    print("Based on config params to Val mode for labels retrival and threshold creation")
-                    test = False
-                    thresholds = None
+                # if tuning_stage == 'none':
+                #     #print("Based on config params to Test mode for labels and treshold retrival")
+                #     test = True
+                #     per_model_voting_thresholds_path = params['per_model_voting_thresholds_path']
+                #     per_model_thresholds = np.load(per_model_voting_thresholds_path, allow_pickle=True)
+                # else: 
+                #     #print("Based on config params to Val mode for labels retrival and threshold creation")
+                #     test = False
+                #     thresholds = None
 
-                votes_list = []
-                threshold_arrays = []
-                # Loop over all models to get for each its maximum probability per study view
-                for idx, model_preds in enumerate(stack):
-                    votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
-                    votes_list.append(votes)
-                    if not test:
-                        thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
-                                                                   ground_truth=gt_labels,
-                                                                   tasks=tasks_list,
-                                                                   metric=metric)[0]
-                        arr = np.array([thresholds[cls] for cls in tasks_list], dtype=float)
-                        threshold_arrays.append(arr)
-                        #thresholds_list.append(thresholds) # Before putting thresholds to array -> Fixed
-                    else:
-                        thresholds = per_model_thresholds[idx]
-                        threshold_arrays.append(thresholds)                   
-                    # Compute threshold based labels
-                    if thresholds is not None:
-                        votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
-                                                                                     thresholds=thresholds,
-                                                                                     tasks=tasks_list).numpy()
-                    else:
-                        print("No threshold tuning applied. Will take default threshold 0.5 for each model")
-                        votes_list[-1]  = (votes_list[-1] >= 0.5).astype(float)
+                # votes_list = []
+                # threshold_arrays = []
+                # # Loop over all models to get for each its maximum probability per study view
+                # for idx, model_preds in enumerate(stack):
+                #     votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
+                #     votes_list.append(votes)
+                #     if not test:
+                #         thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
+                #                                                    ground_truth=gt_labels,
+                #                                                    tasks=tasks_list,
+                #                                                    metric=metric)[0]
+                #         arr = np.array([thresholds[cls] for cls in tasks_list], dtype=float)
+                #         threshold_arrays.append(arr)
+                #         #thresholds_list.append(thresholds) # Before putting thresholds to array -> Fixed
+                #     else:
+                #         thresholds = per_model_thresholds[idx]
+                #         threshold_arrays.append(thresholds)                   
+                #     # Compute threshold based labels
+                #     if thresholds is not None:
+                #         votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
+                #                                                                      thresholds=thresholds,
+                #                                                                      tasks=tasks_list).numpy()
+                #     else:
+                #         print("No threshold tuning applied. Will take default threshold 0.5 for each model")
+                #         votes_list[-1]  = (votes_list[-1] >= 0.5).astype(float)
 
-                votes_arr = np.stack(votes_list, axis=0)
-                per_model_voting_thresholds = np.stack(threshold_arrays, axis=0)
+                # votes_arr = np.stack(votes_list, axis=0)
+                # per_model_voting_thresholds = np.stack(threshold_arrays, axis=0)
 
+                adjusted_weights = a_val * (weight_matrix**b_val)
                 # Compute weighted vote fractions
                 # weight_matrix: (M, C) -> expand to (M, 1, C)
-                weighted = votes_arr * weight_matrix[:, np.newaxis, :]
-                #weighted = weighted**0.5
-                soft_scores = weighted.sum(axis=0)
-                return soft_scores, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
+                soft_scores = (preds * adjusted_weights[:, np.newaxis, :]).sum(axis=0)
+
+                return soft_scores#, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
             return dv_soft
         
 
@@ -305,15 +318,6 @@ class StrategyFactory:
             The models receive each equal weight. Threshold is computed first for every model and then after for the ensemble.
             Threshold is computed for each class and is set by default to 0.5.
             """
-            # Determine class order
-            tasks_list = params.get('class_names') or params.get('tasks')
-            if tasks_list is None:
-                tasks_list = [
-                    'No Finding','Enlarged Cardiomediastinum','Cardiomegaly',
-                    'Lung Opacity','Lung Lesion','Edema','Consolidation',
-                    'Pneumonia','Atelectasis','Pneumothorax','Pleural Effusion',
-                    'Pleural Other','Fracture','Support Devices'
-                ]
             
             # Capture validation targets and threshold config
             tune_cfg = params.get('threshold_tuning', {})
@@ -339,7 +343,7 @@ class StrategyFactory:
                     per_model_voting_thresholds_path = params['per_model_voting_thresholds_path']
                     per_model_thresholds = np.load(per_model_voting_thresholds_path, allow_pickle=True)
                 else: 
-                    print("Based on config params to Val mode for labels retrival and threshold creation")
+                    #print("Based on config params to Val mode for labels retrival and threshold creation")
                     test = False
                     thresholds = None
 
