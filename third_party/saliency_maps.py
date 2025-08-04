@@ -39,6 +39,7 @@ def expand(p):
 
 # Base directory
 base_dir = expand(saliency_cfg.get("base_dir", "~/repo/xai_thesis"))
+deep_lift_baseline = "/home/fkirchhofer/repo/xai_thesis/third_party/mean_image.pt"
 
 # SALIENCY sub‐section:
 sal_cfg = saliency_cfg.get("saliency", {})
@@ -111,8 +112,6 @@ def main():
     ids = df['study_id'].str.split('/', expand=True)[1] 
 
     
-    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Cuda device name: {torch.cuda.get_device_name()}")
     torch.cuda.empty_cache()
     model = model.to(DEVICE)
 
@@ -157,7 +156,8 @@ def main():
                             model=model,
                             layer=layer,
                             input_tensor=img,
-                            target_class=idx)
+                            target_class=idx,
+                            baseline=deep_lift_baseline)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -201,14 +201,15 @@ def main():
                             model=model,
                             layer=layer,
                             input_tensor=img,
-                            target_class=idx)
+                            target_class=idx,
+                            baseline=deep_lift_baseline)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)   
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
                 try:
-                    # Process and save GradCam / LRP overlay to original img.
-                    upscaled_heatmap = utils.process_heatmap(heatmap=heatmap, target_size=(320, 320))
-                    overlayed_imgs = utils.overlay_heatmap_on_img(original_img=img, heatmap=upscaled_heatmap, alpha=0.4)
+                    # Process and save heatmap overlay to original img.
+                    processed_heatmap = utils.process_heatmap(heatmap=heatmap, saliency_method=method, target_size=(320, 320))
+                    overlayed_imgs = utils.overlay_heatmap_on_img(original_img=img, heatmap=processed_heatmap, alpha=0.4)
 
                     method_title = sal_cfg.get("method", "gradcam")
                     title = (f"{method_title} for {study_id} on {target_name}")
@@ -224,8 +225,9 @@ def main():
                 raise ValueError(f"Unknown saliency mode: {args.saliency}")
             #print(f"Heatmap size: {heatmap.size}")
             heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
-                                      target_size=(320,320), 
-                                      normalize=True, 
+                                      target_size=(320,320),
+                                      saliency_method=method, 
+                                      normalize='maxmin', 
                                       flatten=True,
                                       as_tensor=False)
             

@@ -1,7 +1,3 @@
-#from sklearn import metrics
-from sklearn.metrics import f1_score, auc, roc_curve
-from sklearn.metrics import roc_auc_score, confusion_matrix
-from captum.attr import LayerGradCam, LayerLRP
 import numpy as np
 import torch
 import os
@@ -10,6 +6,27 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch.nn.functional as F
 from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
+from sklearn.metrics import f1_score, auc, roc_curve
+from sklearn.metrics import roc_auc_score, confusion_matrix
+from captum.attr import LayerGradCam, LayerLRP, LayerDeepLift, IntegratedGradients
+from captum.attr._utils.lrp_rules import EpsilonRule
+
+
+# Try to access GPU via config file or default (device:0) otherwise will go to CPU
+try:
+    with open("../config.json", "r") as f:
+        config = json.load(f)
+    requested_device = config.get("device", "cuda:0")
+    if requested_device.startswith("cuda") and not torch.cuda.is_available():
+        DEVICE = torch.device("cpu")
+        print("This GPU is not available")
+    else:
+        DEVICE = torch.device(requested_device)
+        print(f"Connected to {torch.cuda.get_device_name(DEVICE)}")
+except (json.JSONDecodeError, ValueError, OSError) as e:
+    print(f"Error loading device from config: {e}")
+    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"Defaulting to: {DEVICE}")
 
 
 #---------------------------------------------------
@@ -63,10 +80,9 @@ def generate_gradcam_heatmap(model:torch.nn.Module,
     Returns:
         2D heatmap as a NumPy array.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    input_tensor = input_tensor.to(device)
-    model = model.to(device)
-    target_layer = target_layer.to(device)
+    input_tensor = input_tensor.to(DEVICE)
+    model = model.to(DEVICE)
+    target_layer = target_layer.to(DEVICE)
 
 
     grad_cam = LayerGradCam(forward_func=model, layer=target_layer)
@@ -93,12 +109,10 @@ def generate_lrp_attribution(model:torch.nn.Module,
         TBD    
 
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    input_tensor = input_tensor.to(device)
-    model = model.to(device)
-    target_layer = target_layer.to(device)
+    input_tensor = input_tensor.to(DEVICE)
+    model = model.to(DEVICE)
+    target_layer = target_layer.to(DEVICE)
 
-    from captum.attr._utils.lrp_rules import EpsilonRule
     model.eval() 
     input_tensor = input_tensor.requires_grad_(True)
     # Apply the Epsilon LRP rule to all Conv2D and Linear layers in the model
@@ -131,17 +145,15 @@ def ig_heatmap(model:torch.nn.Module,
                 target_class:int,
                 target_layer:torch.nn.Module) -> np.ndarray:
     
-    from captum.attr import IntegratedGradients
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # print(f"Cuda device name for IG: {torch.cuda.get_device_name()}")
     # input_tensor = input_tensor.to(device)
     #model = model.to(device)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ig = IntegratedGradients(model)
     ig_attrib, delta = ig.attribute(input_tensor, 
                              target=target_class, 
-                             baselines=torch.zeros_like(input_tensor).to(device),
+                             baselines=torch.zeros_like(input_tensor).to(DEVICE),
                              n_steps=200, # Smallest convergence delta with 80
                              internal_batch_size=1,
                              return_convergence_delta=True)
@@ -158,24 +170,33 @@ def ig_heatmap(model:torch.nn.Module,
 
 
 
-from captum.attr import LayerDeepLift
-
 def deep_lift_layer_heatmap(model, layer, input_tensor, target_class, baseline=None):
-    model = model.eval().to(input_tensor.device)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    layer = layer.to(device)
-    if baseline is None:
-        baseline = torch.zeros_like(input_tensor, device=input_tensor.device)
+    model = model.eval().to(DEVICE)
+    layer = layer.to(DEVICE)
+
+    if baseline != None:
+        try:
+            baseline = torch.load(baseline).to(DEVICE)
+            if baseline.ndim == 3:
+                baseline = baseline.unsqueeze(0)  # Add batch dimension
+        except FileExistsError:
+            print(f"No baseline found with {baseline}")
+    else:
+        print("Take default baseline for DeepLift: zero background")
+        baseline = torch.zeros_like(input_tensor).to(DEVICE)
 
     ldl = LayerDeepLift(model=model, layer=layer)
     attr = ldl.attribute(inputs=input_tensor,
                          baselines=baseline,
                          target=target_class)
-    # attr shape: [1, C, H, W]
-    heatmap = attr.squeeze().cpu().detach().numpy().mean(axis=0)
-    # Aggregate over channels
-    if heatmap.ndim == 3:
-        heatmap = heatmap.mean(axis=0)
+    # print(f"DeepLift raw attribute shape: {attr.shape}")
+    # print(f"DeepLift raw attribute: {attr}")
+    
+    # attr shape: [1, C, H, W] - aggregate over channels
+    heatmap = attr.squeeze().cpu().detach().numpy().sum(axis=0)
+    # print(f"DeepLift attribute shape after computing channel mean: {heatmap.shape}")
+    # print(f"DeepLift attribute after computing channel mean: {heatmap[0]}")
+
     return heatmap
 
 
@@ -222,41 +243,71 @@ def deep_lift_layer_heatmap(model, layer, input_tensor, target_class, baseline=N
 #     return heatmap
 
 
-def process_heatmap(heatmap:np.ndarray, 
-                    target_size:tuple=(10, 10), 
-                    normalize:bool=False, 
-                    flatten:bool=False, 
-                    as_tensor:bool=False)->np.ndarray:
+def process_heatmap(heatmap: np.ndarray, 
+                    target_size: tuple = (10, 10),
+                    saliency_method: str = 'gradcam', 
+                    normalize: str = 'maxmin', 
+                    flatten: bool = False, 
+                    as_tensor: bool = False) -> np.ndarray:
     """
-    Upscale 2D heatmap to target size using bilinear interpolation.
+    Resize and normalize a 2D heatmap.
+
     Args:
-        heatmap (2D numpy array): Heatmap to be processed. E.g. 10x10 depnding on layer used to generate heatmap
-        target_size (Tuple): (height,width) for output resolution
-        normalize (bool): If True max-min normalization will be performed to move heatmap values into range of [0,1]. By default False.
-        flatten (bool): If True flattening operation will be performed to obtain vectorized latent layer heatmap. By default False.
-        as_tensor (bool): If True heatmap will be returnes as tensor, otherwise by default as numpy array.
-    Return:
-        Resized heatmap as numpy array.
+        heatmap (np.ndarray): 2D saliency map (e.g., 10x10 from a convolutional layer).
+        target_size (tuple): Target (height, width) for upscaling using bilinear interpolation.
+        saliency_method (str): Saliency method used. If 'deeplift', sign is preserved and L2 normalization is enforced.
+        normalize (str): 'maxmin' for min-max scaling to [0, 1]; 'l2' for unit L2 norm. 
+                         Ignored and set to 'l2' if saliency_method == 'deeplift'.
+        flatten (bool): Whether to flatten the final output into a 1D vector.
+        as_tensor (bool): Whether to return the result as a PyTorch tensor (default: False → return NumPy array).
+
+    Returns:
+        np.ndarray or torch.Tensor: Normalized heatmap, resized and optionally flattened.
+                                    Returns None if normalization fails (e.g. uniform heatmap for maxmin).
     """
     tolerance = 1e-6
-    # Convert heatmap to tensor with shape [1, 1, H, W]. Unsqueeze adds at dim 0 a tensor of size 1.
-    heatmap = torch.tensor(heatmap).unsqueeze(0).unsqueeze(0).float()
-    #print(f"Target size: {target_size}\nheatmap.size: {heatmap[0, 0, :, :].size()}")
-    if target_size != heatmap[0, 0, :, :].size():
-        heatmap = F.interpolate(heatmap, size=target_size, mode='bilinear', align_corners=False)
-        #print("Interpolated heatmap")
+    if saliency_method == 'deeplift':
+        normalize = 'l2'
 
-    if normalize:
-        if heatmap.max()-heatmap.min() < tolerance:
+    # Convert to tensor and prepare shape for interpolation
+     # Convert heatmap to tensor with shape [1, 1, H, W]. Unsqueeze adds at dim 0 a tensor of size 1.
+    heatmap_tensor = torch.tensor(heatmap, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # Shape: [1, 1, H, W]
+
+    # Resize if needed
+    if heatmap_tensor.shape[-2:] != target_size:
+        heatmap_tensor = F.interpolate(heatmap_tensor, size=target_size, mode='bilinear', align_corners=False)
+
+    # Normalize
+    if normalize == 'maxmin':
+        min_val = heatmap_tensor.min()
+        max_val = heatmap_tensor.max()
+        range_val = max_val - min_val
+
+        if range_val < tolerance:
             print("Uniform heatmap detected: skipping normalization.")
             return None
-        heatmap = (heatmap - heatmap.min()) / (heatmap.max()-heatmap.min() + 1e-8)
-    if flatten:
-        heatmap = torch.flatten(heatmap)
-    if as_tensor:
-        return heatmap
+
+        processed_heatmap = (heatmap_tensor - min_val) / (range_val + 1e-8)
+
+    elif normalize == 'l2':
+        flat = heatmap_tensor.view(-1)
+        norm = torch.norm(flat) + 1e-8
+        processed_heatmap = flat / norm
+        if not flatten:
+            processed_heatmap = processed_heatmap.view(*heatmap_tensor.shape[2:])
+
     else:
-        return heatmap.squeeze().numpy()    
+        raise ValueError(f"Unsupported normalization method: {normalize}")
+
+    # Flatten if requested (only if not already done in l2)
+    if flatten and normalize != 'l2':
+        processed_heatmap = processed_heatmap.view(-1)
+
+    # Return type
+    if as_tensor:
+        return processed_heatmap
+    else:
+        return processed_heatmap.cpu().numpy()   
 
 
 def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:float=0.3)->np.ndarray:
@@ -1060,12 +1111,6 @@ def plot_distinctiveness_radar_from_files(distinctiveness_files,
         fig.savefig(combined_path, dpi=300)
         plt.close(fig)
 
-
-
-
-import matplotlib.pyplot as plt
-import numpy as np
-import os
 
 def plot_threshold_effects(ensemble_probs: np.ndarray,
                            binary_preds: np.ndarray,
