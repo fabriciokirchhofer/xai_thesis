@@ -10,23 +10,27 @@ from sklearn.metrics import f1_score, auc, roc_curve
 from sklearn.metrics import roc_auc_score, confusion_matrix
 from captum.attr import LayerGradCam, LayerLRP, LayerDeepLift, IntegratedGradients
 from captum.attr._utils.lrp_rules import EpsilonRule
+import logging
+
+logging.basicConfig(level=logging.DEBUG)  # or DEBUG for more verbosity
+logger = logging.getLogger(__name__)
 
 
 # Try to access GPU via config file or default (device:0) otherwise will go to CPU
 try:
-    with open("../config.json", "r") as f:
+    with open("/home/fkirchhofer/repo/xai_thesis/config.json", "r") as f:
         config = json.load(f)
     requested_device = config.get("device", "cuda:0")
     if requested_device.startswith("cuda") and not torch.cuda.is_available():
         DEVICE = torch.device("cpu")
-        print("This GPU is not available")
+        logger.info("This GPU is not available")
     else:
         DEVICE = torch.device(requested_device)
-        print(f"Connected to {torch.cuda.get_device_name(DEVICE)}")
+        logger.info(f"Connected to {torch.cuda.get_device_name(DEVICE)}")
 except (json.JSONDecodeError, ValueError, OSError) as e:
     print(f"Error loading device from config: {e}")
     DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(f"Defaulting to: {DEVICE}")
+    logger.warning(f"Defaulting to: {DEVICE}")
 
 
 #---------------------------------------------------
@@ -53,11 +57,10 @@ def get_target_layer(model:torch.nn.Module, layer_name:str=None, method:str='gra
     # Auto-detect: Iterate through modules to find layer
     target_layer = None
     for idx, module in enumerate(model.modules()):
-        #print(f"Module nr {idx+1} is {module}")
         if isinstance(module, torch.nn.Conv2d):
             target_layer = module
-            ## Section for first conv layer with ResNet152 and LRP
-            # if model.__class__.__name__ == 'DenseNet121' and method=='lrp':
+            # Section for first conv layer with ResNet152 and LRP
+            # if model.__class__.__name__ == 'ResNet121' and method=='lrp':
             #     print(f"Idx when returning layer for LRP: {idx}")
             #     print("Recognized Resnet")
             #     return target_layer
@@ -66,9 +69,9 @@ def get_target_layer(model:torch.nn.Module, layer_name:str=None, method:str='gra
     return target_layer
 
 
-def generate_gradcam_heatmap(model:torch.nn.Module, 
-                             input_tensor:torch.Tensor, 
-                             target_class:int, 
+def generate_gradcam_heatmap(model:torch.nn.Module,
+                             input_tensor:torch.Tensor,
+                             target_class:int,
                              target_layer:torch.nn.Module)->np.ndarray:
     """
     Generate a Grad-CAM heatmap for the specified input and target class.
@@ -80,10 +83,6 @@ def generate_gradcam_heatmap(model:torch.nn.Module,
     Returns:
         2D heatmap as a NumPy array.
     """
-    input_tensor = input_tensor.to(DEVICE)
-    model = model.to(DEVICE)
-    target_layer = target_layer.to(DEVICE)
-
 
     grad_cam = LayerGradCam(forward_func=model, layer=target_layer)
     attributions = grad_cam.attribute(input_tensor, target=target_class)
@@ -106,30 +105,23 @@ def generate_lrp_attribution(model:torch.nn.Module,
         target_class (int): Index of the output neuron (class) for which to compute attributions.
         target_layer (torch.nn.Module): By default the last conv layer for Grad-CAM.
     Returns:
-        TBD    
+        TBD
 
     """
-    input_tensor = input_tensor.to(DEVICE)
-    model = model.to(DEVICE)
-    target_layer = target_layer.to(DEVICE)
-
-    model.eval() 
     input_tensor = input_tensor.requires_grad_(True)
     # Apply the Epsilon LRP rule to all Conv2D and Linear layers in the model
     for module in model.modules():
         if isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear):
             module.rule = EpsilonRule()  # attach Epsilon rule for stability in LRP
-    
+
     # Initialize Captum LRP on the entire model (propagates relevance from output to input)
     lrp = LayerLRP(model=model, layer=target_layer)
     # Compute LRP attributions for the specified target class.
     # This returns a tensor with the same shape as the input (e.g., 1 x 3 x H x W for an image).
-    attributions = lrp.attribute(inputs=input_tensor, 
-                                 target=target_class, 
-                                 attribute_to_layer_input=True, 
+    attributions = lrp.attribute(inputs=input_tensor,
+                                 target=target_class,
+                                 attribute_to_layer_input=True,
                                  verbose=False)
-    # print(f"Shape of attribution: {attributions.size()}")
-    # print(f"The attribution: {attributions}")
 
     attr = attributions.squeeze().detach().cpu().numpy()
 
@@ -140,114 +132,84 @@ def generate_lrp_attribution(model:torch.nn.Module,
     return attr
 
 
+# def ig_heatmap(model:torch.nn.Module,
+#                 input_tensor:torch.Tensor,
+#                 target_class:int,
+#                 target_layer:torch.nn.Module,
+#                 baseline=None) -> np.ndarray:
+    
+#     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     # print(f"Cuda device name for IG: {torch.cuda.get_device_name()}")
+#     # input_tensor = input_tensor.to(device)
+#     #model = model.to(device)
+
+#     ig = IntegratedGradients(model)
+#     ig_attrib, delta = ig.attribute(input_tensor, 
+#                              target=target_class, 
+#                              baselines=torch.zeros_like(input_tensor).to(DEVICE),
+#                              n_steps=200, # Smallest convergence delta with 80
+#                              internal_batch_size=1,
+#                              return_convergence_delta=True)
+#     #print(f"Returned convergence delta is: {delta} and device name: {torch.cuda.get_device_name()}")
+#     heatmap_ig = ig_attrib[0].mean(dim=0).cpu().numpy()
+#     # print(f"Shape of attributions: {heatmap_ig.shape}")
+#     # print(f"IG attributions: {heatmap_ig}")
+
+#     # Aggregate across channels if needed [C,M,N] -> [M,N]
+#     if heatmap_ig.ndim == 3:
+#         heatmap_ig = heatmap_ig.mean(axis=0)
+
+#     return heatmap_ig
+
+
 def ig_heatmap(model:torch.nn.Module,
                 input_tensor:torch.Tensor,
                 target_class:int,
-                target_layer:torch.nn.Module) -> np.ndarray:
-    
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # print(f"Cuda device name for IG: {torch.cuda.get_device_name()}")
-    # input_tensor = input_tensor.to(device)
-    #model = model.to(device)
+                target_layer:torch.nn.Module,
+                baseline:torch.Tensor) -> np.ndarray:
+
+    if baseline is None:
+        baseline = torch.zeros_like(input_tensor)
 
     ig = IntegratedGradients(model)
-    ig_attrib, delta = ig.attribute(input_tensor, 
-                             target=target_class, 
-                             baselines=torch.zeros_like(input_tensor).to(DEVICE),
+    ig_attrib, delta = ig.attribute(input_tensor,
+                             target=target_class,
+                             baselines=baseline,
                              n_steps=200, # Smallest convergence delta with 80
                              internal_batch_size=1,
                              return_convergence_delta=True)
     #print(f"Returned convergence delta is: {delta} and device name: {torch.cuda.get_device_name()}")
+    print(f"Shape of ig_attribution: {ig_attrib.size()}")
     heatmap_ig = ig_attrib[0].mean(dim=0).cpu().numpy()
-    # print(f"Shape of attributions: {heatmap_ig.shape}")
-    # print(f"IG attributions: {heatmap_ig}")
-
-    # Aggregate across channels if needed [C,M,N] -> [M,N]
-    if heatmap_ig.ndim == 3:
-        heatmap_ig = heatmap_ig.mean(axis=0)
-
+    print(f"Shape of heatmap_ig after squeezing: {heatmap_ig.shape}")
     return heatmap_ig
 
 
 
-def deep_lift_layer_heatmap(model, layer, input_tensor, target_class, baseline=None):
-    model = model.eval().to(DEVICE)
-    layer = layer.to(DEVICE)
+def deep_lift_layer_heatmap(model,
+                            layer,
+                            input_tensor,
+                            target_class,
+                            baseline=None):
 
-    if baseline != None:
-        try:
-            baseline = torch.load(baseline).to(DEVICE)
-            if baseline.ndim == 3:
-                baseline = baseline.unsqueeze(0)  # Add batch dimension
-        except FileExistsError:
-            print(f"No baseline found with {baseline}")
-    else:
-        print("Take default baseline for DeepLift: zero background")
-        baseline = torch.zeros_like(input_tensor).to(DEVICE)
+    if baseline is None:
+        baseline = torch.zeros_like(input_tensor)
 
     ldl = LayerDeepLift(model=model, layer=layer)
     attr = ldl.attribute(inputs=input_tensor,
                          baselines=baseline,
                          target=target_class)
-    # print(f"DeepLift raw attribute shape: {attr.shape}")
-    # print(f"DeepLift raw attribute: {attr}")
-    
-    # attr shape: [1, C, H, W] - aggregate over channels
-    heatmap = attr.squeeze().cpu().detach().numpy().sum(axis=0)
-    # print(f"DeepLift attribute shape after computing channel mean: {heatmap.shape}")
-    # print(f"DeepLift attribute after computing channel mean: {heatmap[0]}")
 
+    # attr shape: [1, C, H, W] - aggregate over channels
+    heatmap = attr.squeeze(0).cpu().detach().numpy().mean(axis=0)
     return heatmap
 
 
-# Version only working with DenseNet121 not with ResNet152
-# from captum.attr import DeepLift
-# def deep_lift_heatmap(model: torch.nn.Module,
-#                       input_tensor: torch.Tensor,
-#                       target_class: int,
-#                       baseline: torch.Tensor = None) -> np.ndarray:
-#     """
-#     Generate a DeepLIFT attribution map for the specified input and target class.
-#     Args:
-#         model (torch.nn.Module): The trained model in eval mode.
-#         input_tensor (torch.Tensor): Preprocessed input image of shape [1,C,H,W].
-#         target_class (int): Index of the class for which to compute attributions.
-#         baseline (torch.Tensor, optional): Reference input of same shape as input_tensor.
-#             Defaults to all-zero baseline.
-#     Returns:
-#         2D heatmap as a NumPy array.
-#     """
-#     import torch.nn as nn
-#     model = model.eval()
-#     for m in model.modules():
-#         if hasattr(m, "inplace"):
-#             m.inplace = False
-
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     model = model.to(device)
-#     input_tensor = input_tensor.to(device)
-#     # Default baseline = zero tensor if none provided
-#     if baseline is None:
-#         baseline = torch.zeros_like(input_tensor).to(device)
-
-#     # Compute DeepLIFT attributions
-#     dl = DeepLift(model)
-#     attributions = dl.attribute(inputs=input_tensor,
-#                                 baselines=baseline,
-#                                 target=target_class)
-#     # attributions shape: [1, C, H, W]
-#     heatmap = attributions.squeeze().detach().cpu().numpy()
-#     # Aggregate over channels
-#     if heatmap.ndim == 3:
-#         heatmap = heatmap.mean(axis=0)
-#     return heatmap
-
-
-def process_heatmap(heatmap: np.ndarray, 
+def process_heatmap(heatmap: np.ndarray,
                     target_size: tuple = (10, 10),
-                    saliency_method: str = 'gradcam', 
-                    normalize: str = 'maxmin', 
-                    flatten: bool = False, 
+                    saliency_method: str = 'gradcam',
+                    normalize: str = 'maxmin',
+                    flatten: bool = False,
                     as_tensor: bool = False) -> np.ndarray:
     """
     Resize and normalize a 2D heatmap.
@@ -256,7 +218,7 @@ def process_heatmap(heatmap: np.ndarray,
         heatmap (np.ndarray): 2D saliency map (e.g., 10x10 from a convolutional layer).
         target_size (tuple): Target (height, width) for upscaling using bilinear interpolation.
         saliency_method (str): Saliency method used. If 'deeplift', sign is preserved and L2 normalization is enforced.
-        normalize (str): 'maxmin' for min-max scaling to [0, 1]; 'l2' for unit L2 norm. 
+        normalize (str): 'maxmin' for min-max scaling to [0, 1]; 'l2' for unit L2 norm.
                          Ignored and set to 'l2' if saliency_method == 'deeplift'.
         flatten (bool): Whether to flatten the final output into a 1D vector.
         as_tensor (bool): Whether to return the result as a PyTorch tensor (default: False → return NumPy array).
@@ -266,12 +228,15 @@ def process_heatmap(heatmap: np.ndarray,
                                     Returns None if normalization fails (e.g. uniform heatmap for maxmin).
     """
     tolerance = 1e-6
-    if saliency_method == 'deeplift':
+    if saliency_method in ('deeplift', 'ig', 'lrp'):
+        logger.info(f"Forced into L2 normalization because we are using the saliency method {saliency_method}")
         normalize = 'l2'
 
     # Convert to tensor and prepare shape for interpolation
      # Convert heatmap to tensor with shape [1, 1, H, W]. Unsqueeze adds at dim 0 a tensor of size 1.
+    logger.debug(f"heatmap input shape: {heatmap.shape}")
     heatmap_tensor = torch.tensor(heatmap, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # Shape: [1, 1, H, W]
+    logger.debug(f"Heatmap tensor shape after unsqueeze: {heatmap_tensor.size()}")
 
     # Resize if needed
     if heatmap_tensor.shape[-2:] != target_size:
@@ -282,20 +247,16 @@ def process_heatmap(heatmap: np.ndarray,
         min_val = heatmap_tensor.min()
         max_val = heatmap_tensor.max()
         range_val = max_val - min_val
-
         if range_val < tolerance:
             print("Uniform heatmap detected: skipping normalization.")
             return None
-
         processed_heatmap = (heatmap_tensor - min_val) / (range_val + 1e-8)
-
     elif normalize == 'l2':
         flat = heatmap_tensor.view(-1)
         norm = torch.norm(flat) + 1e-8
         processed_heatmap = flat / norm
         if not flatten:
             processed_heatmap = processed_heatmap.view(*heatmap_tensor.shape[2:])
-
     else:
         raise ValueError(f"Unsupported normalization method: {normalize}")
 
@@ -307,7 +268,7 @@ def process_heatmap(heatmap: np.ndarray,
     if as_tensor:
         return processed_heatmap
     else:
-        return processed_heatmap.cpu().numpy()   
+        return processed_heatmap.cpu().numpy()
 
 
 def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:float=0.3)->np.ndarray:
@@ -320,21 +281,33 @@ def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:
     Return:
         Overlay image as numpy array of shape (hight, width, channel).
     """
-    # Normalize heatmap to [0, 1] using min-max scaling.
-    heatmap_norm = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
-    
-    # will have shape [height, width, 4] (RGBA). Take only first three channels.
+    heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
+
+    if isinstance(heatmap, torch.Tensor):
+        heatmap_np = heatmap.detach().cpu().numpy()
+    else:
+        heatmap_np = heatmap
+    # Normalize heatmap to [0,1] if not already
+    if not (0 <= heatmap_np.min() and heatmap_np.max() <= 1.0):
+        logger.debug("Not yet max-min normalized. Lets do so.")
+        heatmap_norm = (heatmap_np - heatmap_np.min()) / (heatmap_np.max() - heatmap_np.min() + 1e-8)
+        logger.debug(f"The heatmap after normalization before overlay: {heatmap_norm}")
+    else:
+        logger.debug("Heatmap for overlay already max-min normalized. Don't do it again.")
+        heatmap_norm = heatmap_np
     cmap = plt.get_cmap('jet')
+
     colored_heatmap = cmap(heatmap_norm)[:, :, :3]
-    
+
     # Convert original image from a tensor of shape [batch_size=1, 3, height, width]
     # to a numpy array of shape [height, width, 3] and apply normalization
     img = original_img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
     img = (img - img.min()) / (img.max() - img.min() + 1e-8)
 
     overlay = (1 - alpha) * img + alpha * colored_heatmap
-    
-    # Clip final overlay to ensure the values are in [0, 1]. Avoid warning
+    logger.debug(f"The overlay: {overlay}")
+
+    # Clip final overlay to ensure the values are in [0, 1].
     overlay = np.clip(overlay, 0, 1)
     return overlay
 
@@ -343,14 +316,14 @@ def visualize_heatmap(heatmap, title:str = "Grad-CAM Heatmap")->plt.figure:
     plt.imshow(heatmap, cmap='jet')
     plt.title(title)
     plt.colorbar()
-    # Return the current figure for further purposes 
+    # Return the current figure for further purposes
     fig = plt.gcf()
     return fig
 
 
 def save_heatmap(fig:plt.Figure, save_path:str) -> None:
     """
-    Save the matplotlib figure   
+    Save the matplotlib figure
     Args:
         fig: The matplotlib figure to save.
         save_path: The full file path where to save the figure.
@@ -371,12 +344,10 @@ def class_distinctiveness(saliency_dict:dict, function:str='cosine_similarity')-
     """
     class_names = list(saliency_dict.keys())
     stacked_vectors = np.stack([np.array(saliency_dict[name]).ravel() for name in class_names], axis=0)
-    #print(f"***\nShape of stacked vectors: {stacked_vectors.shape}\ntype of stacked vectors {type(stacked_vectors)}")
     if function=='cosine_similarity':
         # 1-cos_sim = distinctiveness
         similarity_matrix = 1 - cosine_similarity(stacked_vectors)
     elif function=='cosine_distance':
-        #print(f"Compute cosine distance of stacked vectors: {stacked_vectors}")
         # defined as 1.0 minus the cosine similarity -> range 0 to 2. 0=equal, 2=diametral opposite
         similarity_matrix = cosine_distances(stacked_vectors)
     else:
@@ -392,7 +363,7 @@ def class_distinctiveness(saliency_dict:dict, function:str='cosine_similarity')-
 def sum_up_distinctiveness(collection:dict, new_scores)->dict:
     """
     Helper function to gather pair-wise distinctiveness of several images in dictionary.
-    Args: 
+    Args:
         collection (dict): Pair-wise class distinctiveness in structure of dict[tuple(str,str), float32] containing pair-wise class names and dist. value.
         new_scores (dict): Pair-wise class distinctiveness in structure of dict[tuple(str,str), float32] containing pair-wise class names and dist. value.
     Return:
@@ -468,7 +439,7 @@ def per_class_distinctiveness(distinctiveness_collection:dict,
         print(f"No path provided. Nothing to be stored."
               f"Class_wise_distinctiveness: {class_wise_distinctiveness}")
         return class_wise_distinctiveness
-    
+
 
 def normalize_distinctiveness(distinctiveness_collection: dict)->dict:
     """
@@ -537,7 +508,7 @@ def plot_distinctiveness_boxplots(distinctiveness_collection: dict,
 
 
 
-# In each loop it stacks the vectors of each cls together (class-wise) 
+# In each loop it stacks the vectors of each cls together (class-wise)
 # and then calculates the mean and inserts it into the dictionary centroids (class-wise)
 def compute_centroids(saliency_dict: dict) -> dict:
     """
@@ -549,7 +520,7 @@ def compute_centroids(saliency_dict: dict) -> dict:
     """
     centroids = {}
     cnt = 0
-    for cls, vecs in saliency_dict.items():     
+    for cls, vecs in saliency_dict.items():
         stack = torch.stack(vecs, dim=0)  # shape: (N_c, D) Number of saliency maps (234) and Dimension of vector (100)
         centroids[cls] = stack.mean(dim=0)
         print(f"Stack round {cnt}.\nstack size:{stack.size()}\ncentroids:{centroids}")
@@ -614,7 +585,7 @@ def remove_prefix(dict, prefix):
 def extract_study_id(mode):
     """
     Args:
-        mode (bool): either False goes to 'val' and True goes to 'test'. 
+        mode (bool): either False goes to 'val' and True goes to 'test'.
             It will then read the corresponding CSV file and extract the study ID
             from the image file paths (assuming the study ID is encoded in the first
             three parts of the file path, separated by '/').
@@ -704,7 +675,7 @@ def auroc(probabilities:np.ndarray, ground_truth:np.ndarray, tasks, n_classes=14
         ground_truth (array like): of shape (n_samples,) or (n_samples, n_classes)
         tasks (list of str): Names for each class/task.
         n_classes (int): must match the number of classes. By default 14
-    
+
     Returns:
         dict: Mapping from task name to its ROC AUC score.
 
@@ -712,7 +683,7 @@ def auroc(probabilities:np.ndarray, ground_truth:np.ndarray, tasks, n_classes=14
     # Check format of predictions
     if torch.is_tensor(probabilities):
         probabilities = probabilities.detach().cpu().numpy()
-    elif not isinstance(probabilities, np.ndarray):       
+    elif not isinstance(probabilities, np.ndarray):
         probabilities = np.array(probabilities).reshape(-1,n_classes)
         #probabilities = np.array(probabilities)
 
@@ -725,12 +696,12 @@ def auroc(probabilities:np.ndarray, ground_truth:np.ndarray, tasks, n_classes=14
     # Catch mismatch of classes and tasks (model dependent)
     if len(tasks) != n_classes:
         raise ValueError(f"Expected {n_classes} tasks, but got {len(tasks)}")
-    
+
     auc_results = {}
     for i, task in enumerate(tasks):
         gt = ground_truth[:, i]
         pred = probabilities[:, i]
-        
+
         # Check if there are both positive and negative samples.
         # Here imbalances show up (e.g. fractures)
         if len(np.unique(gt)) < 2:
@@ -792,7 +763,7 @@ def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metri
                 specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
                 score = sensitivity + specificity - 1
             else:
-                raise ValueError("Invalid metric selected. Must be either 'f1' or 'youden'.")           
+                raise ValueError("Invalid metric selected. Must be either 'f1' or 'youden'.")
             if score > best_metric_score:
                 best_metric_score = score
                 best_threshold = t
@@ -803,12 +774,12 @@ def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metri
 
 def threshold_based_predictions(probs, thresholds, tasks):
     """
-    Applies task-specific thresholds to probabilities to generate binary predictions.  
+    Applies task-specific thresholds to probabilities to generate binary predictions.
     Args:
         probs (Tensor): shape (N, C), predicted probabilities
         thresholds (float or dict): single threshold or per-task threshold dict
         tasks (List[str]): list of task names
-    
+
     Returns:
         Tensor: binary predictions (0.0 or 1.0), shape (N, C)
     """
@@ -838,7 +809,7 @@ def plot_roc(predictions, ground_truth, tasks, n_classes=14):
             predictions = predictions.detach().cpu().numpy()
         if torch.is_tensor(ground_truth):
             ground_truth = ground_truth.detach().cpu().numpy()
-            
+
         if len(tasks) != n_classes:
             raise ValueError(f"Expected {n_classes} tasks, but got {len(tasks)}")
 
@@ -848,16 +819,16 @@ def plot_roc(predictions, ground_truth, tasks, n_classes=14):
         for i, task in enumerate(tasks):
             gt = ground_truth[:, i]
             pred = predictions[:, i]
-            
+
             # Skip tasks where only one class is present in the ground truth
             if len(np.unique(gt)) < 2:
                 print(f"Warning: Only one class present in ground truth for {task}. Skipping ROC curve plot for this task.")
                 continue
-            
+
             # calculate FP and TP rates
             fpr, tpr, _ = roc_curve(gt, pred)
             roc_auc = auc(fpr, tpr)
-            
+
             # Plot individual ROC curve
             fig, ax = plt.subplots(figsize=(8, 6))
             ax.plot(fpr, tpr, lw=2, label=f'ROC (AUC = {roc_auc:.2f})')
@@ -869,7 +840,7 @@ def plot_roc(predictions, ground_truth, tasks, n_classes=14):
             ax.set_title(f'ROC Curve for {task}')
             ax.legend(loc="lower right")
             fig.savefig('results/roc_plots/roc_' + str(task) + '.png')
-            
+
             # Add to combined plot
             ax_combined.plot(fpr, tpr, lw=2, label=f'{task} (AUC = {roc_auc:.2f})', linewidth=0.8)
 
@@ -1169,7 +1140,7 @@ def plot_threshold_effects(ensemble_probs: np.ndarray,
 
 
 def plot_search_grid_heatmap(b_vals, a_vals, f1_grid, results_dir):
-    
+
     # Plot heatmap
     fig, ax = plt.subplots()
     c = ax.pcolormesh(b_vals, a_vals, f1_grid, shading='auto')

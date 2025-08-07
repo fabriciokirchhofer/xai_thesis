@@ -4,13 +4,13 @@ import torch
 from torchvision import transforms
 import json
 # python -m third_party.run_models
-import third_party.utils as utils
-import third_party.dataset as dataset
-import third_party.models as models
+# import third_party.utils as utils
+# import third_party.dataset as dataset
+# import third_party.models as models
 
-# import utils
-# import dataset
-# import models
+import utils
+import dataset
+import models
 
 # from third_party import utils
 # from third_party import dataset
@@ -18,7 +18,10 @@ import third_party.models as models
 
 import csv
 import pandas as pd
+import logging
 
+logging.basicConfig(level=logging.DEBUG)  # or DEBUG for more verbosity
+logger = logging.getLogger(__name__)
 
 
 with open("/home/fkirchhofer/repo/xai_thesis/config.json", "r") as f:
@@ -26,10 +29,10 @@ with open("/home/fkirchhofer/repo/xai_thesis/config.json", "r") as f:
 requested_device = config.get("device", "cuda:0")
 if requested_device.startswith("cuda") and not torch.cuda.is_available():
     DEVICE = torch.device("cpu")
-    print("No GPU available")
+    logger.warning("No GPU available")
 else:
     DEVICE = torch.device(requested_device)
-    print(f"Connected to {torch.cuda.get_device_name(DEVICE)}")
+    logger.info(f"Connected to {torch.cuda.get_device_name(DEVICE)}")
 
 path_dir = os.path.expanduser('~/repo/xai_thesis/third_party/pretrainedmodels/')
 # Calculated on validation set average AUROC over atelectasis, cardiomegaly, consolidation, edema, and pleural effusion
@@ -57,7 +60,7 @@ def create_parser():
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # If not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
     parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_2, help='Path to checkpoint file')
+    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
@@ -66,7 +69,7 @@ def create_parser():
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='compute', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside
@@ -137,7 +140,7 @@ def prepare_data(model_args):
         ])
     
     if not model_args.run_test:
-        print("Prepare validation data...") 
+        logger.info("Prepare validation data...") 
         data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/valid.csv'
         data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
 

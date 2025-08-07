@@ -3,14 +3,15 @@ import os
 import numpy as np
 from collections import defaultdict
 import datetime
+from tqdm import tqdm
 
 from run_models import parse_arguments, get_model, load_checkpoint, prepare_data, DEVICE
 import utils
 import json
-# from utils import extract_study_id, get_target_layer, generate_gradcam_heatmap
-# from utils import process_heatmap, overlay_heatmap_on_img, visualize_heatmap
-# from utils import save_heatmap, class_distinctiveness, sum_up_distinctiveness
-# from utils import plot_distinctiveness_boxplots
+import logging
+
+logging.basicConfig(level=logging.DEBUG)  # or DEBUG for more verbosity
+logger = logging.getLogger(__name__)
 
 
 local_time_zone = datetime.timezone(datetime.timedelta(hours=2), name="CEST")
@@ -39,7 +40,6 @@ def expand(p):
 
 # Base directory
 base_dir = expand(saliency_cfg.get("base_dir", "~/repo/xai_thesis"))
-deep_lift_baseline = "/home/fkirchhofer/repo/xai_thesis/third_party/mean_image.pt"
 
 # SALIENCY sub‐section:
 sal_cfg = saliency_cfg.get("saliency", {})
@@ -47,6 +47,17 @@ method = sal_cfg.get("method", "gradcam").lower()
 map_folder       = sal_cfg.get("map_folder", "saliency_maps")
 cache_folder     = sal_cfg.get("cache_folder", "heatmap_cache")
 manual_folder_name    = sal_cfg.get("manifold_name", "ckpt_i_ignore_1")
+
+baseline_tensor = None
+if method in ("ig", "deeplift"):
+    try:
+        saliency_baseline_path = "/home/fkirchhofer/repo/xai_thesis/third_party/mean_image.pt"
+        baseline_tensor = torch.load(saliency_baseline_path)
+        if baseline_tensor.ndim == 3:
+            baseline_tensor = baseline_tensor.unsqueeze(0)
+        baseline_tensor = baseline_tensor.to(DEVICE)
+    except FileNotFoundError:
+        logger.warning(f"Baseline file not found: {saliency_baseline_path}.")
 
 # DISTINCCTIVENESS sub‐section:
 dist_cfg = saliency_cfg.get("distinctiveness", {})
@@ -102,8 +113,9 @@ def main():
 
     # Load model, img data, and access layer to generate saliency maps
     model = load_model(model_name=args.model, tasks=tasks, model_args=args)
-    layer = utils.get_target_layer(model=model, method=method)
-    print(f"Saliency method: {method}\nModel: {model.__class__.__name__}\nPassed layer: {layer}")
+    model = model.eval().to(DEVICE)
+    layer = utils.get_target_layer(model=model, method=method).to(DEVICE)
+    logger.info(f"Saliency method: {method}\nModel: {model.__class__.__name__}\nPassed layer: {layer}")
     data_loader = prepare_data(args)
     distinctiveness_collection = {}
 
@@ -112,11 +124,10 @@ def main():
     ids = df['study_id'].str.split('/', expand=True)[1] 
 
     
-    torch.cuda.empty_cache()
-    model = model.to(DEVICE)
+    #torch.cuda.empty_cache()
 
     # Loop over img data
-    for i, (img, _) in enumerate(data_loader):
+    for i, (img, _) in enumerate(tqdm(data_loader, desc="Processing batches")):
         saliency_dict = defaultdict(list)
         # _ is the label tensor (which we don't need)
         study_id = ids[i]
@@ -149,7 +160,8 @@ def main():
                             model=model,
                             input_tensor=img,
                             target_class=idx,
-                            target_layer=layer)
+                            target_layer=layer,
+                            baseline=baseline_tensor)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
                         heatmap = utils.deep_lift_layer_heatmap(
@@ -157,7 +169,7 @@ def main():
                             layer=layer,
                             input_tensor=img,
                             target_class=idx,
-                            baseline=deep_lift_baseline)
+                            baseline=baseline_tensor)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -170,7 +182,6 @@ def main():
                     try:
                         with np.load(cache_map_path) as d:
                             heatmap = d['heatmap']
-                            print("Loaded from cache.")
                     except LookupError:
                         print("Heatmap not existing. Make sure it is available.")
                 if heatmap is None:
@@ -187,14 +198,14 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer)
-                        print(f"Shape of raw heatmap: {heatmap.shape}")
                         np.savez_compressed(cache_map_path, heatmap=heatmap) 
                     elif method == 'ig':
                         heatmap = utils.ig_heatmap(
                             model=model,
                             input_tensor=img,
                             target_class=idx,
-                            target_layer=layer)
+                            target_layer=layer,
+                            baseline=baseline_tensor)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
                         heatmap = utils.deep_lift_layer_heatmap(
@@ -202,13 +213,13 @@ def main():
                             layer=layer,
                             input_tensor=img,
                             target_class=idx,
-                            baseline=deep_lift_baseline)
+                            baseline=baseline_tensor)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)   
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
                 try:
                     # Process and save heatmap overlay to original img.
-                    processed_heatmap = utils.process_heatmap(heatmap=heatmap, saliency_method=method, target_size=(320, 320))
+                    processed_heatmap = utils.process_heatmap(heatmap=heatmap, saliency_method=method, target_size=(320, 320), as_tensor=False)
                     overlayed_imgs = utils.overlay_heatmap_on_img(original_img=img, heatmap=processed_heatmap, alpha=0.4)
 
                     method_title = sal_cfg.get("method", "gradcam")
@@ -222,14 +233,11 @@ def main():
                 except LookupError:
                     print("Heatmap not existing. Make sure it is available in correct location.")
             else:
-                raise ValueError(f"Unknown saliency mode: {args.saliency}")
-            #print(f"Heatmap size: {heatmap.size}")
+                raise ValueError(f"Unknown saliency map processing mode: {args.saliency}")
             heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
                                       target_size=(320,320),
                                       saliency_method=method, 
-                                      normalize='maxmin', 
-                                      flatten=True,
-                                      as_tensor=False)
+                                      flatten=True)
             
             # Every round append the heatmap_vector to the corresponding target_name (phathology)
             saliency_dict[target_name].append(heatmap_vector)
