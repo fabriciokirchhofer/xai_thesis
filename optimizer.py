@@ -220,12 +220,12 @@ def main():
             # no existing study under that name, so nothing to delete
             pass    
 
+        # Used by default a TPE (Tree-structured Parzen Estimator)
         study = optuna.create_study(
             study_name=f"ensemble_cls_{cls.replace(' ', '_')}",
             direction="maximize",
             storage=optuna_db,
-            load_if_exists=False
-        )
+            load_if_exists=False)
         study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
 
         # best weights

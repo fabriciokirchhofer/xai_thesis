@@ -254,56 +254,6 @@ class StrategyFactory:
             metric = tune_cfg.get('metric', 'f1')
 
             def dv_soft(preds, all_targets, a_val=None, b_val=None):
-                # # preds: list of tensors or arrays, or stacked tensor
-                # if isinstance(preds, list):
-                #     if torch.is_tensor(preds[0]):
-                #         stack = torch.stack(preds, dim=0).cpu().numpy()
-                #     else:
-                #         stack = np.stack(preds, axis=0)
-                # elif torch.is_tensor(preds):
-                #     stack = preds.cpu().numpy()
-                # else:
-                #     stack = np.array(preds)
-
-                # if tuning_stage == 'none':
-                #     #print("Based on config params to Test mode for labels and treshold retrival")
-                #     test = True
-                #     per_model_voting_thresholds_path = params['per_model_voting_thresholds_path']
-                #     per_model_thresholds = np.load(per_model_voting_thresholds_path, allow_pickle=True)
-                # else: 
-                #     #print("Based on config params to Val mode for labels retrival and threshold creation")
-                #     test = False
-                #     thresholds = None
-
-                # votes_list = []
-                # threshold_arrays = []
-                # # Loop over all models to get for each its maximum probability per study view
-                # for idx, model_preds in enumerate(stack):
-                #     votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
-                #     votes_list.append(votes)
-                #     if not test:
-                #         thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
-                #                                                    ground_truth=gt_labels,
-                #                                                    tasks=tasks_list,
-                #                                                    metric=metric)[0]
-                #         arr = np.array([thresholds[cls] for cls in tasks_list], dtype=float)
-                #         threshold_arrays.append(arr)
-                #         #thresholds_list.append(thresholds) # Before putting thresholds to array -> Fixed
-                #     else:
-                #         thresholds = per_model_thresholds[idx]
-                #         threshold_arrays.append(thresholds)                   
-                #     # Compute threshold based labels
-                #     if thresholds is not None:
-                #         votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
-                #                                                                      thresholds=thresholds,
-                #                                                                      tasks=tasks_list).numpy()
-                #     else:
-                #         print("No threshold tuning applied. Will take default threshold 0.5 for each model")
-                #         votes_list[-1]  = (votes_list[-1] >= 0.5).astype(float)
-
-                # votes_arr = np.stack(votes_list, axis=0)
-                # per_model_voting_thresholds = np.stack(threshold_arrays, axis=0)
-
                 adjusted_weights = a_val * (weight_matrix**b_val)
                 # Compute weighted vote fractions
                 # weight_matrix: (M, C) -> expand to (M, 1, C)

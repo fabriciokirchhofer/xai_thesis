@@ -1,5 +1,5 @@
 {
-  "device": "cuda:1",
+  "device": "cuda:2",
 
   "models": [
     {
@@ -50,7 +50,7 @@
   ],
 
   "ensemble": {
-    "strategy": "distinctiveness_voting",
+    "strategy": "distinctiveness_weighted",
     "normalize_distinctiveness_by": "task",
     "threshold_tuning": {
       "stage": "post",
@@ -58,11 +58,11 @@
     "thresholds_path": "tbd",
     "per_model_voting_thresholds_path": "tbd",
     "distinctiveness_files": [
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_IG_val_set/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
     ]
   },
 
@@ -75,7 +75,7 @@
   },
 
   "grid_search":{
-    "perform_grid_search": "false",
+    "perform_grid_search": "true",
     "grid_val_a": 5,
     "grid_val_b": 5,
     "step_size": 0.1
@@ -84,19 +84,19 @@
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "IG",
-      "map_folder": "saliency_maps_L2_IG_val_set",
-      "cache_folder": "heatmap_cache_L2_IG_val_set",
-      "manifold_name": "ckpt_d_ignore_1"},
+      "method": "DeepLift",
+      "map_folder": "saliency_maps_DeepLift_val_set",
+      "cache_folder": "heatmap_cache_DeepLift_val_set",
+      "manifold_name": "ckpt_r_ignore_3x_ep1"},
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "L2_baseline_distinctiveness_cos_similarity_IG_val_set"
+      "output_folder": "L2_distinctiveness_cos_similarity_DeepLift_val_set"
     }
   },
 
   "output": {
     "results_dir": "ensemble_grid_search_f1",
-    "experiment_name": "001_dist_voting_DeepLift_L2_val_5m",
+    "experiment_name": "001_dist_weighted_IG_val_5m",
     "plot_models_analysis": true
   }
 }

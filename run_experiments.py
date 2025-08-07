@@ -83,7 +83,6 @@ def main():
                                             batch_size_override=args_model.batch_size,
                                             test_set=use_test,
                                             assign=True)
-
         logits = model.run_class_model()
         if config['evaluation'].get('use_logits', False):
             preds = logits.cpu()
@@ -128,10 +127,16 @@ def main():
         f1_grid = np.zeros((len(grid_vals_a), len(grid_vals_b)), dtype=float)
 
 
+    # *******************************************************************
     # ******************** Ensemble structure starts ********************
     # *******************************************************************
-    if strategy_name not in ('distinctiveness_voting', 'average_voting'):
+    print(f"Go into {strategy_name} strategy.")
+    tune_cfg = ensemble_cfg.get('threshold_tuning')
+    thresholds_path = ensemble_cfg.get('thresholds_path')
+    thresholds = None
+    pred_ensemble_labels = None
 
+    if strategy_name not in ('distinctiveness_voting', 'average_voting'):
         for i, a in enumerate(grid_vals_a):
             for j, b in enumerate(grid_vals_b):
                 print(f"a:{a}\tb:{b}")
@@ -144,57 +149,46 @@ def main():
                                                                     tasks=tasks,
                                                                     args=args_model)
 
-                tune_cfg = ensemble_cfg.get('threshold_tuning')
-                thresholds = None
-                pred_ensemble_labels = None
-                thresholds_path = ensemble_cfg.get('thresholds_path')
+                # Load thresholds from npy file
+                if thresholds_path and os.path.exists(thresholds_path):
+                    thresholds = np.load(thresholds_path, allow_pickle=True).item()
+                    print(f"Loaded thresholds from {thresholds_path}")
+                    print(f"Loaded thresholds: {thresholds}")
 
-                # # Load thresholds from npy file
-                # if thresholds_path and os.path.exists(thresholds_path):
-                #     thresholds = np.load(thresholds_path, allow_pickle=True).item()
-                #     print(f"Loaded thresholds from {thresholds_path}")
-                #     print(f"Loaded thresholds: {thresholds}")
+                #Compute thresholds based on F1
+                elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
+                    thresholds, _ = evaluator.find_optimal_thresholds(
+                        probabilities=ensemble_probs,
+                        ground_truth=subset_gt_labels,
+                        tasks=tasks,
+                        metric=tune_cfg.get('metric', 'f1')
+                    )
 
-            # Compute thresholds based on F1
-            #elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
-                #print(f"Enter to threshold tuning based on {tune_cfg['metric']}")
-                thresholds, _ = evaluator.find_optimal_thresholds(
-                    probabilities=ensemble_probs,
-                    ground_truth=subset_gt_labels,
-                    tasks=tasks,
-                    metric=tune_cfg.get('metric', 'f1')
-                )
-                #print(f"Thresholds from tuning: {thresholds}")
+                # Compute predictions 
+                if thresholds is not None:
+                    #print("Use received thresholds")
+                    pred_ensemble_labels = evaluator.threshold_based_predictions(
+                        probs=torch.tensor(ensemble_probs),
+                        thresholds=thresholds,
+                        tasks=tasks).numpy()
+                else:
+                    print("No threshold tuning applied. Will take default threshold 0.5")
+                    pred_ensemble_labels = (ensemble_probs >= 0.5).astype(float)
 
-            # Compute threshold based labels
-            #if thresholds is not None:
-                #print("Use received thresholds")
-                pred_ensemble_labels = evaluator.threshold_based_predictions(
-                    probs=torch.tensor(ensemble_probs),
-                    thresholds=thresholds,
-                    tasks=tasks
-                ).numpy()
+                if do_grid_search:
+                    # Evaluate F1 subset mean
+                    metrics = evaluator.evaluate_metrics(
+                        predictions=ensemble_probs,
+                        binary_preds=pred_ensemble_labels,
+                        targets=subset_gt_labels,
+                        tasks=tasks,
+                        metrics=['F1'],
+                        evaluation_sub_tasks=eval_tasks
+                    )
+                    # print(f"Returned metrics: {metrics}")
+                    f1_grid[i, j] = metrics['F1_subset_mean']
 
-                # else:
-                #     print("No threshold tuning applied. Will take default threshold 0.5")
-                #     pred_ensemble_labels = (ensemble_probs >= 0.5).astype(float)
-
-            #if do_grid_search:
-                # Evaluate F1 subset mean
-                metrics = evaluator.evaluate_metrics(
-                    predictions=ensemble_probs,
-                    binary_preds=pred_ensemble_labels,
-                    targets=subset_gt_labels,
-                    tasks=tasks,
-                    metrics=['F1'],
-                    evaluation_sub_tasks=eval_tasks
-                )
-                f1_grid[i, j] = metrics['F1_subset_mean']
-
-
-        # Do here the F1 score computation per parameter in the grid and add it into the mean_f1_grid
-
-        # Plot graph which shows the probabilities an where the threshold is
+        # Plot graph which shows the probabilities and where the threshold for the binary prediction is
         utils.plot_threshold_effects(ensemble_probs=ensemble_probs,
                                 binary_preds=pred_ensemble_labels,
                                 thresholds=thresholds,
@@ -204,14 +198,6 @@ def main():
 
     # ****************** Voting structure start ******************
     else:
-        print(f"Went into {strategy_name} strategy.")
-        tune_cfg = ensemble_cfg.get('threshold_tuning')
-        pred_ensemble_labels = None
-        thresholds = None     # Thresholds for ensemble per class
-        thresholds_path = ensemble_cfg.get('thresholds_path')
-
-
-        # # Grid search patch start************************
         # preds: list of tensors or arrays, or stacked tensor
         if isinstance(model_probs, list):
             if torch.is_tensor(preds[0]):
@@ -223,15 +209,13 @@ def main():
         else:
             stack = np.array(model_probs)
 
-        # if tuning_stage == 'none':
-        #     #print("Based on config params to Test mode for labels and treshold retrival")
-        #     test = True
-        #     per_model_voting_thresholds_path = params['per_model_voting_thresholds_path']
-        #     per_model_thresholds = np.load(per_model_voting_thresholds_path, allow_pickle=True)
-        # else: 
-        #     #print("Based on config params to Val mode for labels retrival and threshold creation")
-        test = False
-        thresholds = None
+        if tune_cfg.get("stage") == 'none':
+            print("Went to Test mode. Load precomputed thresholds.")
+            test = True
+            per_model_thresholds = np.load(ensemble_cfg.get('per_model_voting_thresholds_path'), allow_pickle=True)
+        else: 
+            #print("Based on config params to Val mode for labels retrival and threshold creation")
+            test = False
 
         votes_list = []
         threshold_arrays = []
@@ -239,6 +223,7 @@ def main():
         for idx, model_preds in enumerate(stack):
             votes, subset_gt_labels = utils.get_max_prob_per_view(model_preds, gt_labels, tasks, args=args_model)
             votes_list.append(votes)
+
             if not test:
                 thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
                                                             ground_truth=subset_gt_labels,
@@ -246,11 +231,11 @@ def main():
                                                             metric=tune_cfg.get('metric', 'f1'))[0]
                 arr = np.array([thresholds[cls] for cls in tasks], dtype=float)
                 threshold_arrays.append(arr)
-                #thresholds_list.append(thresholds) # Before putting thresholds to array -> Fixed
-            # else:
-            #     thresholds = per_model_thresholds[idx]
-            #     threshold_arrays.append(thresholds)                   
-            # Compute threshold based labels
+            else:
+                thresholds = per_model_thresholds[idx]
+                threshold_arrays.append(thresholds)    
+
+            # Compute predictions
             if thresholds is not None:
                 votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
                                                                                 thresholds=thresholds,
@@ -261,65 +246,51 @@ def main():
 
         votes_arr = np.stack(votes_list, axis=0)
         per_model_voting_thresholds = np.stack(threshold_arrays, axis=0)
-        # # Grid search patch end************************
+        # Grid search patch end************************
 
+        # Try to load thresholds for the voting fraction from npy file
+        if thresholds_path and os.path.exists(thresholds_path):
+            print("Load precomputed thresholds for the voting fraction.")
+            thresholds = np.load(thresholds_path, allow_pickle=True).item()
 
         for i, a in enumerate(grid_vals_a):
             for j, b in enumerate(grid_vals_b):
                 print(f"a:{a}\tb:{b}")
-                # if grid_cfg.get('perform_grid_search') start here with the loop
-                # weighted_vote_fraction, subset_gt_labels, per_model_voting_thresholds = strategy_fn(votes_arr,
-                #                                                                             all_targets=gt_labels,
-                #                                                                             a_val=a,
-                #                                                                             b_val=b)
                 weighted_vote_fraction = strategy_fn(votes_arr, all_targets=subset_gt_labels, a_val=a, b_val=b)
                 ensemble_probs = weighted_vote_fraction
 
-                # # Load thresholds from npy file
-                # if thresholds_path and os.path.exists(thresholds_path):
-                #     thresholds = np.load(thresholds_path, allow_pickle=True).item()
-
                 # Compute thresholds based on F1
-            # elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
-                thresholds, _ = evaluator.find_optimal_thresholds(
-                    probabilities=weighted_vote_fraction,
-                    ground_truth=subset_gt_labels,
-                    tasks=tasks,
-                    metric=tune_cfg.get('metric', 'f1'))
+                if tune_cfg and tune_cfg.get('stage', 'post') == 'post':
+                    thresholds, _ = evaluator.find_optimal_thresholds(
+                        probabilities=weighted_vote_fraction,
+                        ground_truth=subset_gt_labels,
+                        tasks=tasks,
+                        metric=tune_cfg.get('metric', 'f1'))
                     #print(f"Thresholds for weighted voting fraction ensemble from tuning: {thresholds}")
                 # Compute threshold based labels
-            #if thresholds is not None:
-                pred_ensemble_labels = evaluator.threshold_based_predictions(
-                    probs=torch.tensor(weighted_vote_fraction),
-                    thresholds=thresholds,
-                    tasks=tasks
-                ).numpy()
-                # else:
-                #     print("No threshold tuning applied. Will take default threshold 0.5")
-                #     pred_ensemble_labels = (ensemble_probs >= 0.5).astype(float)
+                if thresholds is not None:
+                    pred_ensemble_labels = evaluator.threshold_based_predictions(
+                        probs=torch.tensor(weighted_vote_fraction),
+                        thresholds=thresholds,
+                        tasks=tasks).numpy()
+                else:
+                    print("No threshold tuning applied. Will take default threshold 0.5")
+                    pred_ensemble_labels = (ensemble_probs >= 0.5).astype(float)
 
-            #if do_grid_search:
-                # Evaluate F1 subset mean
-                metrics = evaluator.evaluate_metrics(
-                    predictions=ensemble_probs,
-                    binary_preds=pred_ensemble_labels,
-                    targets=subset_gt_labels,
-                    tasks=tasks,
-                    metrics=['F1'],
-                    evaluation_sub_tasks=eval_tasks
-                )
-                f1_grid[i, j] = metrics['F1_subset_mean']
+                if do_grid_search:
+                    # Evaluate F1 subset mean
+                    metrics = evaluator.evaluate_metrics(
+                        predictions=ensemble_probs,
+                        binary_preds=pred_ensemble_labels,
+                        targets=subset_gt_labels,
+                        tasks=tasks,
+                        metrics=['F1'],
+                        evaluation_sub_tasks=eval_tasks
+                    )
+                    #print(f"Returned metrics: {metrics}")
+                    f1_grid[i, j] = metrics['F1_subset_mean']
 
     # ****************** Voting structure ends ******************
-
-    if do_grid_search:
-        print("Retrieve the best a and b vals")
-        # Find best (a, b)
-        best_idx = np.unravel_index(np.nanargmax(f1_grid), f1_grid.shape)
-        best_a = float(grid_vals_a[best_idx[0]])
-        best_b = float(grid_vals_b[best_idx[1]])
-        print(f"Best a: {best_a}")
-        print(f"Best b: {best_b}")
 
     eval_cfg = config.get('evaluation', {})
     results = evaluator.evaluate_metrics(
@@ -330,7 +301,24 @@ def main():
         metrics=eval_cfg.get('metrics', ['AUROC']),
         evaluation_sub_tasks=eval_cfg.get('evaluation_sub_tasks', eval_tasks),
         tasks=tasks
-    )
+    ) 
+
+    if do_grid_search:
+        print(f"Final f1_grid: {f1_grid}")
+        print("Retrieve the best a and b vals")
+        # Find best (a, b)
+        best_idx = np.unravel_index(np.nanargmax(f1_grid), f1_grid.shape)
+        best_a = float(grid_vals_a[best_idx[0]])
+        best_b = float(grid_vals_b[best_idx[1]])
+        best_f1 = float(f1_grid[best_idx]) 
+        print(f"Best a: {best_a}")
+        print(f"Best b: {best_b}")
+        print(f"Best F1 score: {best_f1}")
+        results["grid_search"] = {
+            "best_a": best_a,
+            "best_b": best_b,
+            "best_f1_subset_mean": best_f1
+    }
 
     evaluator.plot_roc(predictions=ensemble_probs,
                     ground_truth=subset_gt_labels,
@@ -400,6 +388,8 @@ def main():
     with open(os.path.join(results_dir, 'metrics.json'), 'w') as mf:
         json.dump(results, mf, indent=4)
     np.save(os.path.join(results_dir, 'ensemble_probs.npy'), ensemble_probs)
+    if do_grid_search:
+        np.save(os.path.join(results_dir, 'f1_grid.npy'), f1_grid)
     if pred_ensemble_labels is not None:
         np.save(os.path.join(results_dir, 'ensemble_labels.npy'), pred_ensemble_labels)
     if thresholds is not None:
