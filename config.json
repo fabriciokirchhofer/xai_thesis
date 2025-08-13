@@ -50,19 +50,19 @@
   ],
 
   "ensemble": {
-    "strategy": "distinctiveness_voting",
+    "strategy": "distinctiveness_weighted",
     "normalize_distinctiveness_by": "task",
     "threshold_tuning": {
-      "stage": "post",
+      "stage": "pre",
       "metric": "f1"},
     "thresholds_path": "tbd",
     "per_model_voting_thresholds_path": "tbd",
     "distinctiveness_files": [
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_L2_baseline_val_set/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/val/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/val/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/val/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/val/distinctiveness_cos_similarity_GradCAM_val_set/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/val/distinctiveness_cos_similarity_GradCAM_val_set/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
     ]
   },
 
@@ -75,10 +75,10 @@
   },
 
   "grid_search":{
-    "perform_grid_search": "false",
+    "perform_grid_search": "true",
     "grid_val_a": 5,
     "grid_val_b": 5,
-    "step_size": 0.1
+    "step_size": 0.5
   },
 
   "saliency_script": {
@@ -95,8 +95,8 @@
   },
 
   "output": {
-    "results_dir": "ensemble_grid_search_f1",
-    "experiment_name": "001_dist_voting_DeepLift_L2_val_5m",
+    "results_dir": "ensemble_EXPLORATIVE_grid_search_f1",
+    "experiment_name": "001_dist_weighted_GradCAM_val_5m",
     "plot_models_analysis": true
   }
 }

@@ -37,7 +37,7 @@ def main():
         help="Path to JSON config file with model and ensemble settings."
     )
     parser.add_argument(
-        "--output", type=str, default= "/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_p.json",
+        "--output", type=str, default= "/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_pre_thresholding.json",
         help="Path to save the optimized weights+thresholds JSON."
     )
     parser.add_argument(
@@ -171,7 +171,7 @@ def main():
     # ----- set up for post‑ensemble threshold tuning if requested -----
     do_post_thr = (tune_cfg.get("stage") == "post")
     ensemble_thresholds = {} if do_post_thr else None
-    print(f"do_post_thr: {do_post_thr}\nensemble_thresholds: {ensemble_thresholds}")
+    #print(f"do_post_thr: {do_post_thr}\nensemble_thresholds: {ensemble_thresholds}")
 
 
     # ----------------------------------------------------------
@@ -205,7 +205,15 @@ def main():
                     for m in range(num_models)
                 ], axis=0)  # shape (M, N)
                 agg = np.dot(w, bits)  # shape (N,)
-                preds = (agg >= 0.5).astype(int)
+                # TODO: add here again a treshold tuning for the ensemble
+                #ens_thr = evaluator.find_optimal_thresholds(probabilities=agg, ground_truth=...)
+                thr_dict, _ = evaluator.find_optimal_thresholds(
+                                        probabilities = agg.reshape(-1, 1),
+                                        ground_truth  = gt_labels[:, eval_indices[idx]].reshape(-1,1),
+                                        tasks         = [cls],
+                                        metric        = tune_cfg.get("metric", "f1"))
+                t = thr_dict[cls]
+                preds = (agg >= t).astype(int)
             else:
                 # directly average probs
                 pm = model_probs[:, :, eval_indices[idx]]  # (M, N)
@@ -259,14 +267,18 @@ def main():
     # Do final computation with the best weight from the optimization. Follows the ensemble structure of dist_voting using soft_votes
     ensemble_thresholds = {}
     for idx, cls in enumerate(eval_tasks):
-        # assemble the binary votes
-        bits = np.stack([
-            (model_probs[m][:, eval_indices[idx]] >= thresholds_by_model[m][idx]).astype(float)
-            for m in range(num_models)
-        ], axis=0)  # shape (M, N)
+        pm = model_probs[:, :, eval_indices[idx]]  # (M, N)
+        if thresholds_by_model is None:
+            ens_scores = np.dot(weight_matrix[:, idx], pm)  # prob averaging
+        else:
+            # assemble the binary votes
+            bits = np.stack([
+                (model_probs[m][:, eval_indices[idx]] >= thresholds_by_model[m][idx]).astype(float)
+                for m in range(num_models)
+            ], axis=0)  # shape (M, N)
 
-        # weighted sum of votes
-        ens_scores = np.dot(weight_matrix[:, idx], bits)
+            # weighted sum of votes
+            ens_scores = np.dot(weight_matrix[:, idx], bits)
 
         # find best cutoff for this class
         thr_dict, _ = evaluator.find_optimal_thresholds(

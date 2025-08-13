@@ -184,15 +184,15 @@ class StrategyFactory:
                     stack = np.stack(preds, axis=0)
 
                 adjusted_weights = a_val * (weight_matrix**b_val)
+                #adjusted_weights = adjusted_weights / (adjusted_weights.sum(axis=0, keepdims=True)+1e-8)
 
                 # Compute weighted sum across model axis (axis=0) using the weight matrix
                 # Expand weight_matrix to shape (models, 1, C) for broadcasting across N samples
                 weighted_sum = np.sum(stack * adjusted_weights[:, np.newaxis, :], axis=0)
-                #print(f"Shape of weighted_sum: {weighted_sum.shape}")
                 #weighted_sum = weighted_sum-np.min(weighted_sum, axis=1, keepdims=True) / (np.max(weighted_sum, axis=1, keepdims=True)-np.min(weighted_sum, axis=1, keepdims=True) + 1e-8)
                 return weighted_sum  # shape: (N, C) NumPy array            
             # make it accessible
-            distinctiveness_fn.weight_matrix = weight_matrix
+            distinctiveness_fn.weighted_sum = weight_matrix
             return distinctiveness_fn
         
 

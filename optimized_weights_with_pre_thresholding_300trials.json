@@ -1,11 +1,11 @@
 {
   "F1_scores": {
     "Atelectasis": 0.738255,
-    "Cardiomegaly": 0.653846,
+    "Cardiomegaly": 0.657718,
     "Consolidation": 0.75,
-    "Edema": 0.732673,
-    "Pleural Effusion": 0.82963,
-    "Final_Average": 0.740881
+    "Edema": 0.744681,
+    "Pleural Effusion": 0.832117,
+    "Final_Average": 0.744554
   },
   "Thresholds": {
     "ModelA": {
@@ -46,39 +46,39 @@
   },
   "Weights": {
     "ModelA": {
-      "Atelectasis": 0.072632,
-      "Cardiomegaly": 0.278255,
-      "Consolidation": 0.342994,
-      "Edema": 0.18516,
-      "Pleural Effusion": 0.323873
+      "Atelectasis": 0.199209,
+      "Cardiomegaly": 0.269318,
+      "Consolidation": 0.30803,
+      "Edema": 0.288429,
+      "Pleural Effusion": 0.296021
     },
     "ModelB": {
-      "Atelectasis": 0.376926,
-      "Cardiomegaly": 0.159878,
-      "Consolidation": 0.116721,
-      "Edema": 0.235543,
-      "Pleural Effusion": 0.144917
+      "Atelectasis": 0.369998,
+      "Cardiomegaly": 0.369037,
+      "Consolidation": 0.121363,
+      "Edema": 0.252982,
+      "Pleural Effusion": 0.059151
     },
     "ModelC": {
-      "Atelectasis": 0.223603,
-      "Cardiomegaly": 0.144171,
-      "Consolidation": 0.143577,
-      "Edema": 0.37234,
-      "Pleural Effusion": 0.046368
+      "Atelectasis": 0.101824,
+      "Cardiomegaly": 0.011751,
+      "Consolidation": 0.15869,
+      "Edema": 0.1244,
+      "Pleural Effusion": 0.082046
     },
     "ModelD": {
-      "Atelectasis": 0.265951,
-      "Cardiomegaly": 0.226474,
-      "Consolidation": 0.074168,
-      "Edema": 0.090848,
-      "Pleural Effusion": 0.292059
+      "Atelectasis": 0.295684,
+      "Cardiomegaly": 0.154967,
+      "Consolidation": 0.0545,
+      "Edema": 0.155009,
+      "Pleural Effusion": 0.403661
     },
     "ModelE": {
-      "Atelectasis": 0.060889,
-      "Cardiomegaly": 0.191222,
-      "Consolidation": 0.322541,
-      "Edema": 0.116109,
-      "Pleural Effusion": 0.192783
+      "Atelectasis": 0.033285,
+      "Cardiomegaly": 0.194927,
+      "Consolidation": 0.357417,
+      "Edema": 0.17918,
+      "Pleural Effusion": 0.15912
     }
   }
 }
