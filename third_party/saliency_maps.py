@@ -1,14 +1,15 @@
-import torch
 import os
 import numpy as np
-from collections import defaultdict
 import datetime
-from tqdm import tqdm
-
-from run_models import parse_arguments, get_model, load_checkpoint, prepare_data, DEVICE
-import utils
+import torch
 import json
 import logging
+from collections import defaultdict
+from tqdm import tqdm
+
+import utils
+from run_models import parse_arguments, get_model, load_checkpoint, prepare_data, DEVICE
+
 
 logging.basicConfig(level=logging.DEBUG)  # or DEBUG for more verbosity
 logger = logging.getLogger(__name__)

@@ -58,9 +58,9 @@ def create_parser():
     parser = argparse.ArgumentParser(description="Script settings to run XAI model ensemble")
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # If not further used it can be removed
-    parser.add_argument('--batch_size', type=int, default=1, help='The batch size which will be passed to the model')
-    parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
+    parser.add_argument('--batch_size', type=int, default=64, help='The batch size which will be passed to the model')
+    parser.add_argument('--model', type=str, default='ResNet152', help='specify model name')
+    parser.add_argument('--ckpt', type=str, default=ckpt_r_ignore_3x_ep1, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
@@ -69,7 +69,7 @@ def create_parser():
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='compute', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside
@@ -176,9 +176,7 @@ def prepare_data(model_args):
 
 # Run the model
 def model_run(model, data_loader):
-    # Use GPU if available
-    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    #print("Device for evaluation:", device)
+
     model.to(DEVICE)
     model.eval()
 

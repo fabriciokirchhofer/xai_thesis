@@ -12,7 +12,7 @@ from captum.attr import LayerGradCam, LayerLRP, LayerDeepLift, IntegratedGradien
 from captum.attr._utils.lrp_rules import EpsilonRule
 import logging
 
-logging.basicConfig(level=logging.DEBUG)  # or DEBUG for more verbosity
+logging.basicConfig(level=logging.INFO)  # or DEBUG for more verbosity
 logger = logging.getLogger(__name__)
 
 
@@ -131,37 +131,6 @@ def generate_lrp_attribution(model:torch.nn.Module,
 
     return attr
 
-
-# def ig_heatmap(model:torch.nn.Module,
-#                 input_tensor:torch.Tensor,
-#                 target_class:int,
-#                 target_layer:torch.nn.Module,
-#                 baseline=None) -> np.ndarray:
-    
-#     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     # print(f"Cuda device name for IG: {torch.cuda.get_device_name()}")
-#     # input_tensor = input_tensor.to(device)
-#     #model = model.to(device)
-
-#     ig = IntegratedGradients(model)
-#     ig_attrib, delta = ig.attribute(input_tensor, 
-#                              target=target_class, 
-#                              baselines=torch.zeros_like(input_tensor).to(DEVICE),
-#                              n_steps=200, # Smallest convergence delta with 80
-#                              internal_batch_size=1,
-#                              return_convergence_delta=True)
-#     #print(f"Returned convergence delta is: {delta} and device name: {torch.cuda.get_device_name()}")
-#     heatmap_ig = ig_attrib[0].mean(dim=0).cpu().numpy()
-#     # print(f"Shape of attributions: {heatmap_ig.shape}")
-#     # print(f"IG attributions: {heatmap_ig}")
-
-#     # Aggregate across channels if needed [C,M,N] -> [M,N]
-#     if heatmap_ig.ndim == 3:
-#         heatmap_ig = heatmap_ig.mean(axis=0)
-
-#     return heatmap_ig
-
-
 def ig_heatmap(model:torch.nn.Module,
                 input_tensor:torch.Tensor,
                 target_class:int,
@@ -179,9 +148,7 @@ def ig_heatmap(model:torch.nn.Module,
                              internal_batch_size=1,
                              return_convergence_delta=True)
     #print(f"Returned convergence delta is: {delta} and device name: {torch.cuda.get_device_name()}")
-    print(f"Shape of ig_attribution: {ig_attrib.size()}")
     heatmap_ig = ig_attrib[0].mean(dim=0).cpu().numpy()
-    print(f"Shape of heatmap_ig after squeezing: {heatmap_ig.shape}")
     return heatmap_ig
 
 
@@ -229,7 +196,7 @@ def process_heatmap(heatmap: np.ndarray,
     """
     tolerance = 1e-6
     if saliency_method in ('deeplift', 'ig', 'lrp'):
-        logger.info(f"Forced into L2 normalization because we are using the saliency method {saliency_method}")
+        logger.debug(f"Forced into L2 normalization because we are using the saliency method {saliency_method}")
         normalize = 'l2'
 
     # Convert to tensor and prepare shape for interpolation

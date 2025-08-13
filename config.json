@@ -1,5 +1,5 @@
 {
-  "device": "cuda:1",
+  "device": "cuda:2",
 
   "models": [
     {
@@ -84,13 +84,13 @@
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "IG",
-      "map_folder": "saliency_maps_L2_IG_val_set",
-      "cache_folder": "heatmap_cache_L2_IG_val_set",
-      "manifold_name": "ckpt_d_ignore_1"},
+      "method": "GradCAM",
+      "map_folder": "saliency_maps_L2_GradCAM_val_set",
+      "cache_folder": "heatmap_cache_L2_GradCAM_val_set",
+      "manifold_name": "ckpt_r_ignore_3x_ep1"},
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "L2_baseline_distinctiveness_cos_similarity_IG_val_set"
+      "output_folder": "distinctiveness_cos_similarity_GradCAM_L2_baseline_val_set"
     }
   },
 
