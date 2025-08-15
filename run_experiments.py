@@ -156,7 +156,7 @@ def main():
                     print(f"Loaded thresholds: {thresholds}")
 
                 #Compute thresholds based on F1
-                elif tune_cfg and tune_cfg.get('stage', 'post') == 'post':
+                elif tune_cfg and tune_cfg.get('stage', 'pre') == 'pre':
                     thresholds, _ = evaluator.find_optimal_thresholds(
                         probabilities=ensemble_probs,
                         ground_truth=subset_gt_labels,
@@ -260,7 +260,7 @@ def main():
                 ensemble_probs = weighted_vote_fraction
 
                 # Compute thresholds based on F1
-                if tune_cfg and tune_cfg.get('stage', 'post') == 'post':
+                if tune_cfg and tune_cfg.get('stage', 'pre') == 'pre':
                     thresholds, _ = evaluator.find_optimal_thresholds(
                         probabilities=weighted_vote_fraction,
                         ground_truth=subset_gt_labels,

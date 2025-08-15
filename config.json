@@ -75,7 +75,7 @@
   },
 
   "grid_search":{
-    "perform_grid_search": "true",
+    "perform_grid_search": "false",
     "grid_val_a": 5,
     "grid_val_b": 5,
     "step_size": 0.5
@@ -95,8 +95,8 @@
   },
 
   "output": {
-    "results_dir": "ensemble_EXPLORATIVE_grid_search_f1",
-    "experiment_name": "001_dist_weighted_GradCAM_val_5m",
+    "results_dir": "ensemble_GradCAM_f1",
+    "experiment_name": "001_dist_weighted_val_5m",
     "plot_models_analysis": true
   }
 }

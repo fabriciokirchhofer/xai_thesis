@@ -37,7 +37,7 @@ def main():
         help="Path to JSON config file with model and ensemble settings."
     )
     parser.add_argument(
-        "--output", type=str, default= "/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_pre_thresholding.json",
+        "--output", type=str, default= "/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler.json",
         help="Path to save the optimized weights+thresholds JSON."
     )
     parser.add_argument(
@@ -45,7 +45,7 @@ def main():
         help="If set, do not normalize weights per class (otherwise weights sum to 1)."
     )
     parser.add_argument(
-        "--trials", type=int, default=300,
+        "--trials", type=int, default=30,
         help="Number of Optuna trials per class (default: 30)."
     )
     args = parser.parse_args()
@@ -238,10 +238,12 @@ def main():
 
         # Used by default a TPE (Tree-structured Parzen Estimator)
         # REEEEEEEEEAAAAAADDDDD HOW THIS IS HANDELED 
+        sampler = optuna.samplers.TPESampler(multivariate=True, group=True)
         study = optuna.create_study(
             study_name=f"ensemble_cls_{cls.replace(' ', '_')}",
             direction="maximize",
             storage=optuna_db,
+            sampler=sampler,
             load_if_exists=False)
         study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
 
