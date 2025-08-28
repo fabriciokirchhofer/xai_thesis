@@ -19,14 +19,14 @@ data_updated = {
         '2025-04-15', 
         '2025-05-31',
         '2025-08-15', 
-        '2025-09-15', 
+        '2025-09-23', 
         '2025-11-24'
     ],
     'End': [
         '2025-03-30', 
         '2025-05-04', 
         '2025-06-30', 
-        '2025-10-01',
+        '2025-09-23',
         '2025-10-26', 
         '2025-11-23', 
         '2025-12-12'
@@ -58,7 +58,7 @@ ax.grid(True)
 
 plt.tight_layout()
 plt.show()
-fig.savefig(fname="/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/Planning_gant_chart_v3.0.png")
+fig.savefig(fname="/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/Planning_gant_chart_v4.0.png")
 
 # Export the revised timeline to an Excel file
 #output_file_path = 'thesis_timeline.xlsx'

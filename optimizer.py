@@ -37,15 +37,15 @@ def main():
         help="Path to JSON config file with model and ensemble settings."
     )
     parser.add_argument(
-        "--output", type=str, default= "/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler.json",
+        "--output", type=str, default= "/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler_300.json",
         help="Path to save the optimized weights+thresholds JSON."
     )
     parser.add_argument(
-        "--no-normalize", action="store_true",
+        "--no-normalize", default=False,
         help="If set, do not normalize weights per class (otherwise weights sum to 1)."
     )
     parser.add_argument(
-        "--trials", type=int, default=30,
+        "--trials", type=int, default=300,
         help="Number of Optuna trials per class (default: 30)."
     )
     args = parser.parse_args()
@@ -204,22 +204,22 @@ def main():
                     (model_probs[m][:, eval_indices[idx]] >= thresholds_by_model[m][idx]).astype(float)
                     for m in range(num_models)
                 ], axis=0)  # shape (M, N)
-                agg = np.dot(w, bits)  # shape (N,)
-                # TODO: add here again a treshold tuning for the ensemble
-                #ens_thr = evaluator.find_optimal_thresholds(probabilities=agg, ground_truth=...)
+                
+                soft_vote = np.dot(w, bits)  # shape (N,)
+
                 thr_dict, _ = evaluator.find_optimal_thresholds(
-                                        probabilities = agg.reshape(-1, 1),
+                                        probabilities = soft_vote.reshape(-1, 1),
                                         ground_truth  = gt_labels[:, eval_indices[idx]].reshape(-1,1),
                                         tasks         = [cls],
                                         metric        = tune_cfg.get("metric", "f1"))
                 t = thr_dict[cls]
-                preds = (agg >= t).astype(int)
+                preds = (soft_vote >= t).astype(int)
             else:
                 # directly average probs
                 pm = model_probs[:, :, eval_indices[idx]]  # (M, N)
-                agg = np.dot(w, pm)
-                agg = np.clip(agg, 0.0, 1.0)
-                preds = (agg >= 0.5).astype(int)
+                soft_vote = np.dot(w, pm)
+                soft_vote = np.clip(soft_vote, 0.0, 1.0)
+                preds = (soft_vote >= 0.5).astype(int)
 
             y_true = gt_labels[:, eval_indices[idx]].astype(int)
             return evaluator.f1_score(y_true, preds, zero_division=0)
@@ -237,8 +237,7 @@ def main():
             pass    
 
         # Used by default a TPE (Tree-structured Parzen Estimator)
-        # REEEEEEEEEAAAAAADDDDD HOW THIS IS HANDELED 
-        sampler = optuna.samplers.TPESampler(multivariate=True, group=True)
+        sampler = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42)
         study = optuna.create_study(
             study_name=f"ensemble_cls_{cls.replace(' ', '_')}",
             direction="maximize",
@@ -246,7 +245,6 @@ def main():
             sampler=sampler,
             load_if_exists=False)
         study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
-
 
         # Access for the best trial the best parameters. Otherwise default to equal weights and F1=0.
         if study.best_trial: # Optuna attribute
@@ -302,17 +300,14 @@ def main():
         output["F1_scores"][cls] = round(f1_final, 6)
         print(f"[POST] Class {cls}: threshold={t_ens:.3f} → F1={f1_final:.4f}")
 
-
-    # **** Dump results into JSON file
+    # Compute and dump results into JSON file
     output["Thresholds"]["ensemble"] = {
         cls: float(round(ensemble_thresholds[cls], 6))
-        for cls in eval_tasks
-    }
-    # final average
+        for cls in eval_tasks}
+    
     avg = float(np.mean(list(output["F1_scores"].values())))
     output["F1_scores"]["Final_Average"] = round(avg, 6)
 
-    # dump weights
     output["Weights"] = {
         model_names[m]: {
             eval_tasks[c]: float(round(weight_matrix[m, c], 6))

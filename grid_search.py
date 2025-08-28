@@ -40,9 +40,6 @@ distinct_vals_list = []
 for path in distinct_files:
     with open(path, 'r') as f:
         dist_dict = json.load(f)
-        # Fix any known typos in class names (e.g., "Pleaural Effusion" -> "Pleural Effusion")
-        if 'Pleaural Effusion' in dist_dict:
-            dist_dict['Pleural Effusion'] = dist_dict.pop('Pleaural Effusion')
         distinct_vals_list.append(dist_dict)
 
 num_models = len(distinct_vals_list)

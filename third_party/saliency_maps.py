@@ -30,7 +30,7 @@ args.batch_size = 1
 
 # Assume config.json sits in the same folder as this script.
 # If you put it elsewhere, just change the path below.
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "/home/fkirchhofer/repo/xai_thesis/config.json")
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "/home/fkirchhofer/repo/xai_thesis/config_TEMP.json")
 with open(CONFIG_PATH, "r") as f:
     config = json.load(f)
 saliency_cfg = config.get("saliency_script", {})
@@ -162,7 +162,7 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer,
-                            baseline=baseline_tensor)
+                            baseline=None) # Switch to None to set zero_baseline
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
                         heatmap = utils.deep_lift_layer_heatmap(
@@ -170,7 +170,7 @@ def main():
                             layer=layer,
                             input_tensor=img,
                             target_class=idx,
-                            baseline=baseline_tensor)
+                            baseline=None)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -206,7 +206,7 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer,
-                            baseline=baseline_tensor)
+                            baseline=None)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
                         heatmap = utils.deep_lift_layer_heatmap(
@@ -214,7 +214,7 @@ def main():
                             layer=layer,
                             input_tensor=img,
                             target_class=idx,
-                            baseline=baseline_tensor)
+                            baseline=None)
                         np.savez_compressed(cache_map_path, heatmap=heatmap)   
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -236,7 +236,7 @@ def main():
             else:
                 raise ValueError(f"Unknown saliency map processing mode: {args.saliency}")
             heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
-                                      target_size=(320,320),
+                                      target_size=heatmap.shape,
                                       saliency_method=method, 
                                       flatten=True)
             

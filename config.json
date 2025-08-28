@@ -1,5 +1,5 @@
 {
-  "device": "cuda:2",
+  "device": "cuda:1",
 
   "models": [
     {
@@ -50,13 +50,13 @@
   ],
 
   "ensemble": {
-    "strategy": "distinctiveness_weighted",
+    "strategy": "distinctiveness_voting",
     "normalize_distinctiveness_by": "task",
     "threshold_tuning": {
       "stage": "pre",
       "metric": "f1"},
-    "thresholds_path": "tbd",
-    "per_model_voting_thresholds_path": "tbd",
+    "thresholds_path": "insert",
+    "per_model_voting_thresholds_path": "insert",
     "distinctiveness_files": [
       "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/val/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
       "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/val/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
@@ -78,25 +78,25 @@
     "perform_grid_search": "false",
     "grid_val_a": 5,
     "grid_val_b": 5,
-    "step_size": 0.5
+    "step_size": 0.05
   },
 
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "GradCAM",
-      "map_folder": "saliency_maps_L2_GradCAM_val_set",
-      "cache_folder": "heatmap_cache_L2_GradCAM_val_set",
-      "manifold_name": "ckpt_r_ignore_3x_ep1"},
+      "method": "IG",
+      "map_folder": "saliency_maps_IG_val_set",
+      "cache_folder": "heatmap_cache_IG_val_set",
+      "manifold_name": "ckpt_d_ignore_1"},
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity_GradCAM_L2_baseline_val_set"
+      "output_folder": "distinctiveness_cos_similarity_IG_test_no_baseline_set"
     }
   },
 
   "output": {
-    "results_dir": "ensemble_GradCAM_f1",
-    "experiment_name": "001_dist_weighted_val_5m",
+    "results_dir": "ensemble_Grid_Search_f1",
+    "experiment_name": "001_distinctiveness_voting_GradCAM_val_5m",
     "plot_models_analysis": true
   }
 }

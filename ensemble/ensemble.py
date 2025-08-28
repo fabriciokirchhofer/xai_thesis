@@ -55,7 +55,7 @@ class StrategyFactory:
 
         # Simple average of probabilities
         if name == 'average':
-            def avg_fn(preds, all_targets=None):
+            def avg_fn(preds, all_targets=None, a_val=None, b_val=None):
                 # preds: list of tensors or numpy arrays, or tensor
                 if isinstance(preds, list):
                     # if torch tensors, stack directly
@@ -77,7 +77,7 @@ class StrategyFactory:
             weights = params.get('weights') # TODO: Define 'weights' in the config file. In run_experiments.py it will be called as ensemble_cfg (ca line 102)
             assert weights is not None, "Weights must be provided for weighted strategy"
             weights = np.array(weights, dtype=float)
-            def w_fn(preds, all_targets=None):
+            def w_fn(preds, all_targets=None, a_val=None, b_val=None):
                 # preds: list of tensors or numpy arrays
                 if isinstance(preds, list) and torch.is_tensor(preds[0]):
                     stack = torch.stack(preds, dim=0).numpy()
@@ -102,7 +102,7 @@ class StrategyFactory:
             if thresh == None:
                 print("No thresholds passed - will take default 0.5")
                 thresh = 0.5
-            def v_fn(preds, all_targets=None):
+            def v_fn(preds, all_targets=None, a_val=None, b_val=None):
                 # preds: list of tensors or numpy arrays
                 if isinstance(preds, list) and torch.is_tensor(preds[0]):
                     arr = torch.stack(preds, dim=0).numpy()
@@ -268,78 +268,24 @@ class StrategyFactory:
             The models receive each equal weight. Threshold is computed first for every model and then after for the ensemble.
             Threshold is computed for each class and is set by default to 0.5.
             """
-            
-            # Capture validation targets and threshold config
-            tune_cfg = params.get('threshold_tuning', {})
-            tuning_stage = tune_cfg.get('stage', 'none')
-            metric = tune_cfg.get('metric', 'f1')
 
-            def av_soft(preds, all_targets):
-                # preds: list of tensors or arrays, or stacked tensor
-                if isinstance(preds, list):
-                    if torch.is_tensor(preds[0]):
-                        stack = torch.stack(preds, dim=0).cpu().numpy()
-                    else:
-                        stack = np.stack(preds, axis=0)
-                elif torch.is_tensor(preds):
-                    stack = preds.cpu().numpy()
-                else:
-                    stack = np.array(preds)
+            def av_soft(preds, all_targets, a_val=None, b_val=None):
 
-                
-                if tuning_stage == 'none':
-                    print("Based on config params to Test mode for labels and treshold retrival")
-                    test = True
-                    per_model_voting_thresholds_path = params['per_model_voting_thresholds_path']
-                    per_model_thresholds = np.load(per_model_voting_thresholds_path, allow_pickle=True)
-                else: 
-                    #print("Based on config params to Val mode for labels retrival and threshold creation")
-                    test = False
-                    thresholds = None
-
-                votes_list = []
-                threshold_arrays = []
-                # Loop over all models to get for each its maximum probability per study view
-                for idx, model_preds in enumerate(stack):
-                    votes, gt_labels = _get_max_prob_per_view(model_preds, all_targets, tasks_list, args=test)
-                    votes_list.append(votes)
-                    if not test:
-                        thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
-                                                                   ground_truth=gt_labels,
-                                                                   tasks=tasks_list,
-                                                                   metric=metric)[0]
-                        arr = np.array([thresholds[cls] for cls in tasks_list], dtype=float)
-                        threshold_arrays.append(arr)
-                        #thresholds_list.append(thresholds) # Before putting thresholds to array -> Fixed
-                    else:
-                        thresholds = per_model_thresholds[idx]
-                        threshold_arrays.append(thresholds)                   
-                    # Compute threshold based labels
-                    if thresholds is not None:
-                        votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
-                                                                                     thresholds=thresholds,
-                                                                                     tasks=tasks_list).numpy()
-                    else:
-                        print("No threshold tuning applied. Will take default threshold 0.5 for each model")
-                        votes_list[-1]  = (votes_list[-1] >= 0.5).astype(float)
-
-                votes_arr = np.stack(votes_list, axis=0)
-                avg_votes = np.mean(votes_arr, axis=0)
+                avg_votes = np.mean(preds, axis=0)
                 #avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6) # Invert for ablation study
-                per_model_voting_thresholds = np.stack(threshold_arrays, axis=0)
 
-                return avg_votes, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
+                return avg_votes # shape (N, C), in [0,1]
             return av_soft
         
 
         if name == 'random_weighted':
             # Optional seed for reproducibility
-            seed = params.get('seed', 0)
+            seed = params.get('seed', 1)
             rng = np.random.default_rng(seed)
             # closure to remember the one random weight vector
             weights_holder = [None]
 
-            def rand_fn(preds, all_targets=None):
+            def rand_fn(preds, all_targets=None, a_val=None, b_val=None):
                 # stack exactly as in the other strategies
                 if isinstance(preds, list) and torch.is_tensor(preds[0]):
                     arr = torch.stack(preds, dim=0).numpy()

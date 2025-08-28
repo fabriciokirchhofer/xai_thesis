@@ -215,7 +215,7 @@ def process_heatmap(heatmap: np.ndarray,
         max_val = heatmap_tensor.max()
         range_val = max_val - min_val
         if range_val < tolerance:
-            print("Uniform heatmap detected: skipping normalization.")
+            print("Uniform heatmap detected: sipping normalization.")
             return None
         processed_heatmap = (heatmap_tensor - min_val) / (range_val + 1e-8)
     elif normalize == 'l2':
@@ -253,8 +253,12 @@ def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:
     if isinstance(heatmap, torch.Tensor):
         heatmap_np = heatmap.detach().cpu().numpy()
     else:
-        heatmap_np = heatmap
-    # Normalize heatmap to [0,1] if not already
+        heatmap_np = np.asarray(heatmap)
+    # # Normalize heatmap to [0,1] if not already
+    # if heatmap_np.ndim == 3:
+    #     heatmap_np = np.mean(heatmap_np, axis=0)
+    # assert heatmap_np.ndim == 2, f"Heatmap must be 2D after squeeze, got {heatmap_np.shape}"
+
     if not (0 <= heatmap_np.min() and heatmap_np.max() <= 1.0):
         logger.debug("Not yet max-min normalized. Lets do so.")
         heatmap_norm = (heatmap_np - heatmap_np.min()) / (heatmap_np.max() - heatmap_np.min() + 1e-8)
@@ -262,12 +266,12 @@ def overlay_heatmap_on_img(original_img:torch.tensor, heatmap:np.ndarray, alpha:
     else:
         logger.debug("Heatmap for overlay already max-min normalized. Don't do it again.")
         heatmap_norm = heatmap_np
+    
     cmap = plt.get_cmap('jet')
-
-    colored_heatmap = cmap(heatmap_norm)[:, :, :3]
+    colored_heatmap = cmap(heatmap_norm)[..., :3].squeeze().squeeze()
 
     # Convert original image from a tensor of shape [batch_size=1, 3, height, width]
-    # to a numpy array of shape [height, width, 3] and apply normalization
+    # to a numpy array of shape [height, width, 3] and apply normalization. Squeeze drops the first position and permute swaps the positions
     img = original_img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
     img = (img - img.min()) / (img.max() - img.min() + 1e-8)
 
