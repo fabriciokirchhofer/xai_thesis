@@ -4,13 +4,13 @@ import torch
 from torchvision import transforms
 import json
 # python -m third_party.run_models
-# import third_party.utils as utils
-# import third_party.dataset as dataset
-# import third_party.models as models
+import third_party.utils as utils
+import third_party.dataset as dataset
+import third_party.models as models
 
-import utils
-import dataset
-import models
+# import utils
+# import dataset
+# import models
 
 # from third_party import utils
 # from third_party import dataset
@@ -60,16 +60,16 @@ def create_parser():
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # If not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=64, help='The batch size which will be passed to the model')
     parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
+    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_2, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
     parser.add_argument('--tune_thresholds', type=bool, default=True, help='If True, find optimal per-class thresholds using F1 score. Will save it.')
-    parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')   
+    parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='compute', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside
@@ -136,11 +136,11 @@ def prepare_data(model_args):
     inference_transform = transforms.Compose([
         transforms.ConvertImageDtype(dtype=torch.float),
         transforms.Resize(size), # Resizing based of requirements for Inception v4
-        transforms.Normalize(mean=train_mean.tolist(), std=train_std.tolist())                
+        transforms.Normalize(mean=train_mean.tolist(), std=train_std.tolist())
         ])
-    
+
     if not model_args.run_test:
-        logger.info("Prepare validation data...") 
+        logger.info("Prepare validation data...")
         data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/valid.csv'
         data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
 
@@ -182,7 +182,7 @@ def model_run(model, data_loader):
 
     print("Running model in standard multi-label mode...\n")
     all_logits = []
-    
+
     with torch.no_grad():
         for images, labels in data_loader:
             images, labels = images.to(DEVICE, non_blocking=True), labels.to(DEVICE)
@@ -198,8 +198,8 @@ def model_run(model, data_loader):
 def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=True):
     """
     TODO: define args and returns
-    Evaluate the model's performance using logits and ground truth from data_loader. 
-    Computes accuracy, AUROC, optionally plots ROC curves, and performs threshold tuning. 
+    Evaluate the model's performance using logits and ground truth from data_loader.
+    Computes accuracy, AUROC, optionally plots ROC curves, and performs threshold tuning.
 
     """
 
@@ -240,7 +240,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
         # Group by study_id and take only the maximum predicted probability per study.
         agg_prob = prob_df.groupby('study_id').max()
         agg_gt = gt_df.groupby('study_id').max()
-    
+
         probs = torch.tensor(agg_prob.values)
         gt_labels   = torch.tensor(agg_gt.values)
         #******************** get max prob per view end ********************
@@ -248,7 +248,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
     # VALIDATION SET
     if not model_args.run_test:
         predictions = utils.threshold_based_predictions(probs, model_args.sigmoid_threshold, tasks)
-        
+
         probs = probs.cpu()
         predictions = predictions.cpu()
 
@@ -264,16 +264,16 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
         print(f"AUROC from sigmoid based probabilities:")
         eval_tasks = ['Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
         eval_auroc = 0
-        for task, score in auroc.items(): 
+        for task, score in auroc.items():
             print(f"{task}: score: {score:.4f}")
             if task in eval_tasks:
                 eval_auroc += score
         eval_auroc /= 5
         print('Final evaluation AUROC:', eval_auroc)
-    
+
         if model_args.plot_roc:
             print("Plot the ROC curves")
-            utils.plot_roc(predictions=probs, ground_truth=gt_labels, tasks=tasks)    
+            utils.plot_roc(predictions=probs, ground_truth=gt_labels, tasks=tasks)
 
         # Compute optimal per-class thresholds based on F1 score, if threshold tuning is enabled.
         if model_args.tune_thresholds:
@@ -300,8 +300,8 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                 'Consolidation':6,
                 'Atelectasis':8,
                 'Pleural Effusion':10
-                }    
-                    
+                }
+
             print(f"Shape of tuned_predictions: {tuned_predictions.shape}")
             print(f"Shape of gt_labels: {gt_labels.shape}")
             print(f"target_class_dict.values: {target_class_dict.values()}")
@@ -314,18 +314,18 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                           gt_labels=gt_labels_subset,
                           tasks=target_class_dict.keys(),
                           model_name=model_args.model)
-            
-            
+
+
             acc = utils.compute_accuracy(tuned_predictions, gt_labels)
             print(f"[Validatoin] Accuracy using tuned thresholds: {acc:.4f}")
-            
-            youden = utils.comput_youden_idx(ground_truth=gt_labels, 
-                                             preds=tuned_predictions, 
-                                             tasks=tasks)
- 
 
-            f1 = utils.compute_f1_score(ground_truth=gt_labels, 
-                                        preds=tuned_predictions, 
+            youden = utils.comput_youden_idx(ground_truth=gt_labels,
+                                             preds=tuned_predictions,
+                                             tasks=tasks)
+
+
+            f1 = utils.compute_f1_score(ground_truth=gt_labels,
+                                        preds=tuned_predictions,
                                         tasks=tasks)
 
             # Average for eval_tasks
@@ -357,7 +357,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                 for task, auc in optimal_thresholds.items():
                     writer.writerow([task, auc])
 
-        
+
         # Save accuracy based on sigmoid threshold to csv file
         if model_args.save_acc_roc:
             filename = os.path.expanduser('~/repo/xai_thesis/third_party/results/'+  str(model_args.model) + '_sigmoid' +  str(model_args.sigmoid_threshold) + '.csv')
@@ -370,7 +370,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                 # ROC AUC for each task
                 for task, auc in auroc.items():
                     writer.writerow([f'ROC AUC {task}', auc])
-    
+
     print("********** Finished Eval mode **********")
 
 
@@ -378,7 +378,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
 def run_test_with_thresholds(model, model_args, tasks, test_loader, threshold_csv_path):
     """
     Runs the test set evaluation using previously saved optimal thresholds.
-    
+
     Args:
         model (torch.nn.Module): Trained model to evaluate.
         model_args: Parsed command-line arguments.
@@ -443,13 +443,13 @@ def main():
     # Create the model based on provided arguments
     model = get_model(model_args.model, tasks, model_args)
     print("Loaded model:", type(model))
-    
+
     # Load checkpoint and prepare the model for inference
     model = load_checkpoint(model, model_args.ckpt)
-    
+
     # Prepare the data loader for inference
     data_loader = prepare_data(model_args=model_args)
-    
+
     # Run inference on one batch and print the predictions
     logits = model_run(model=model, data_loader=data_loader)
 
@@ -467,12 +467,12 @@ def main():
 
 if __name__ == '__main__':
     """
-    When run directly: The condition evaluates to True, 
+    When run directly: The condition evaluates to True,
                     and the main() function is executed.
-    When imported: The condition is False, 
-                    and the main() function is not executed automatically. 
+    When imported: The condition is False,
+                    and the main() function is not executed automatically.
                     This is especially useful if you want to import functions
-                    or classes from your script into another module without 
+                    or classes from your script into another module without
                     running the whole pipeline.
     """
     main()
