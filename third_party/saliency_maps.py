@@ -236,9 +236,8 @@ def main():
             else:
                 raise ValueError(f"Unknown saliency map processing mode: {args.saliency}")
             heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
-                                      target_size=(320, 320), # heatmap.shape
-                                      saliency_method=method,
-                                      normalize='l2', 
+                                      target_size=(640, 640), # heatmap.shape
+                                      saliency_method=method, 
                                       flatten=True)
             
             # Every round append the heatmap_vector to the corresponding target_name (phathology)
