@@ -98,6 +98,8 @@ def main():
     gt_labels = np.vstack(gt_labels)
 
     ensemble_cfg = config.get('ensemble', {})
+    ensemble_cfg['model_names'] = [m.get('name', f'Model{i+1}') for i, m in enumerate(config.get('models', []))]
+    ensemble_cfg['tasks'] = tasks
     strategy_name = ensemble_cfg.get('strategy', 'average') # Get strategy by default it will take average
     strategy_fn = ens_module.StrategyFactory.get_strategy(strategy_name, **ensemble_cfg)
     per_model_voting_thresholds = None # List of single model thresholds before ensemble
@@ -132,8 +134,8 @@ def main():
     # *******************************************************************
     print(f"Go into {strategy_name} strategy.")
     tune_cfg = ensemble_cfg.get('threshold_tuning')
-    thresholds_path = ensemble_cfg.get('thresholds_path')
-    thresholds = None
+    ens_thresholds_path = ensemble_cfg.get('thresholds_path')
+    ens_thresholds = None
     pred_ensemble_labels = None
 
     if strategy_name not in ('distinctiveness_voting', 'average_voting'):
@@ -148,28 +150,42 @@ def main():
                                                                     gt_labels=gt_labels,
                                                                     tasks=tasks,
                                                                     args=args_model)
+                
 
-                # Load thresholds from npy file
-                if thresholds_path and os.path.exists(thresholds_path):
-                    thresholds = np.load(thresholds_path, allow_pickle=True).item()
-                    print(f"Loaded thresholds from {thresholds_path}")
-                    print(f"Loaded thresholds: {thresholds}")
+                # Optuna patch - START
+                # Load thresholds for TEST runs (prefer JSON, fallback to npy); else compute for VAL runs
+                cfg_weights_path = ensemble_cfg.get('config_weights', None)
+                if tune_cfg and tune_cfg.get('stage') == 'none' and cfg_weights_path and os.path.exists(cfg_weights_path):
+                    # Read ensemble thresholds from Optuna JSON (distinctiveness_weighted: only "ensemble" is present)
+                    with open(cfg_weights_path, 'r') as jf:
+                        cfgw = json.load(jf)
+                    thr_map = cfgw.get("Thresholds", {})
+                    ens_thr_map = thr_map.get("ensemble", {})
+                    ens_thresholds = {cls: float(ens_thr_map.get(cls, 0.5)) for cls in tasks}
+                # Optuna patch -  END 
 
-                #Compute thresholds based on F1
+
+                elif ens_thresholds_path and os.path.exists(ens_thresholds_path):
+                    # Legacy npy thresholds (still supported)
+                    ens_thresholds = np.load(ens_thresholds_path, allow_pickle=True).item()
+                    print(f"Loaded thresholds from {ens_thresholds_path}")
+
                 elif tune_cfg and tune_cfg.get('stage', 'pre') == 'pre':
-                    thresholds, _ = evaluator.find_optimal_thresholds(
+                    # Compute thresholds in validation mode
+                    ens_thresholds, _ = evaluator.find_optimal_thresholds(
                         probabilities=ensemble_probs,
                         ground_truth=subset_gt_labels,
                         tasks=tasks,
                         metric=tune_cfg.get('metric', 'f1')
                     )
 
+
                 # Compute predictions 
-                if thresholds is not None:
+                if ens_thresholds is not None:
                     #print("Use received thresholds")
                     pred_ensemble_labels = evaluator.threshold_based_predictions(
                         probs=torch.tensor(ensemble_probs),
-                        thresholds=thresholds,
+                        thresholds=ens_thresholds,
                         tasks=tasks).numpy()
                 else:
                     print("No threshold tuning applied. Will take default threshold 0.5")
@@ -191,7 +207,7 @@ def main():
         # Plot graph which shows the probabilities and where the threshold for the binary prediction is
         utils.plot_threshold_effects(ensemble_probs=ensemble_probs,
                                 binary_preds=pred_ensemble_labels,
-                                thresholds=thresholds,
+                                thresholds=ens_thresholds,
                                 class_names=tasks,
                                 save_path=os.path.join(results_dir, "plots/threshold_effects"))
 
@@ -209,49 +225,87 @@ def main():
         else:
             stack = np.array(model_probs)
 
+        # Optuna patch - START
         if tune_cfg.get("stage") == 'none':
             print("Went to Test mode. Load precomputed thresholds.")
             test = True
-            per_model_thresholds = np.load(ensemble_cfg.get('per_model_voting_thresholds_path'), allow_pickle=True)
+            cfg_weights_path = ensemble_cfg.get('config_weights', None)
+
+            per_model_thresholds = None
+            ens_thresholds = None
+
+            if cfg_weights_path and os.path.exists(cfg_weights_path):
+                # Load per-model AND ensemble thresholds from JSON exported by optimize_ensemble_weights.py
+                with open(cfg_weights_path, 'r') as jf:
+                    cfgw = json.load(jf)
+
+                thr_map = cfgw.get("Thresholds", {})
+                # Preserve model order as in StrategyFactory
+                model_names_cfg = ensemble_cfg.get('model_names', [m["name"] for m in config["models"]])
+
+                # ---- per-model thresholds (shape: M x C, aligned to full `tasks`) ----
+                per_model_thresholds_arrays = []
+                for name in model_names_cfg:
+                    md = thr_map.get(name, {})
+                    arr = np.array([float(md.get(cls, 0.5)) for cls in tasks], dtype=float)
+                    per_model_thresholds_arrays.append(arr)
+                if len(per_model_thresholds_arrays) > 0:
+                    per_model_thresholds = np.stack(per_model_thresholds_arrays, axis=0)  # (M, C)
+
+                # ---- ensemble thresholds (dict for later thresholding) ----
+                ens_thr_map = thr_map.get("ensemble", {})
+                if isinstance(ens_thr_map, dict) and len(ens_thr_map) > 0:
+                    ens_thresholds = {cls: float(ens_thr_map.get(cls, 0.5)) for cls in tasks}
+
+            # Fallbacks to legacy .npy if JSON not provided
+            if per_model_thresholds is None:
+                pth = ensemble_cfg.get('per_model_voting_thresholds_path')
+                if pth and os.path.exists(pth):
+                    per_model_thresholds = np.load(pth, allow_pickle=True)
+
+            # Keep a per-model thresholds array-of-arrays for saving later in npy
+            per_model_thresholds_arrays = []
+        # Optuna patch - END
         else: 
             #print("Based on config params to Val mode for labels retrival and threshold creation")
             test = False
 
         votes_list = []
-        threshold_arrays = []
+        per_model_thresholds_arrays = []
         # Loop over all models to get for each its maximum probability per study view
         for idx, model_preds in enumerate(stack):
             votes, subset_gt_labels = utils.get_max_prob_per_view(model_preds, gt_labels, tasks, args=args_model)
             votes_list.append(votes)
 
             if not test:
-                thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
+                model_thresholds = evaluator.find_optimal_thresholds(probabilities=votes_list[-1], 
                                                             ground_truth=subset_gt_labels,
                                                             tasks=tasks,
                                                             metric=tune_cfg.get('metric', 'f1'))[0]
-                arr = np.array([thresholds[cls] for cls in tasks], dtype=float)
-                threshold_arrays.append(arr)
+                arr = np.array([model_thresholds[cls] for cls in tasks], dtype=float)
+                per_model_thresholds_arrays.append(arr)
             else:
-                thresholds = per_model_thresholds[idx]
-                threshold_arrays.append(thresholds)    
+                model_thresholds = per_model_thresholds[idx]
+                per_model_thresholds_arrays.append(model_thresholds)    
 
             # Compute predictions
-            if thresholds is not None:
+            if per_model_thresholds is not None:
                 votes_list[-1]  = evaluator.threshold_based_predictions(probs=torch.tensor(votes_list[-1]),
-                                                                                thresholds=thresholds,
+                                                                                thresholds=per_model_thresholds_arrays[-1],
                                                                                 tasks=tasks).numpy()
             else:
                 print("No threshold tuning applied. Will take default threshold 0.5 for each model")
                 votes_list[-1]  = (votes_list[-1] >= 0.5).astype(float)
 
         votes_arr = np.stack(votes_list, axis=0)
-        per_model_voting_thresholds = np.stack(threshold_arrays, axis=0)
+        per_model_voting_thresholds = np.stack(per_model_thresholds_arrays, axis=0)
         # Grid search patch end************************
 
         # Try to load thresholds for the voting fraction from npy file
-        if thresholds_path and os.path.exists(thresholds_path):
-            print("Load precomputed thresholds for the voting fraction.")
-            thresholds = np.load(thresholds_path, allow_pickle=True).item()
+        if ens_thresholds is None and ens_thresholds_path and os.path.exists(ens_thresholds_path):
+            print("Load precomputed ensemble thresholds for the voting fraction (npy).")
+            ens_thresholds = np.load(ens_thresholds_path, allow_pickle=True).item()
+
 
         for i, a in enumerate(grid_vals_a):
             for j, b in enumerate(grid_vals_b):
@@ -261,17 +315,16 @@ def main():
 
                 # Compute thresholds based on F1
                 if tune_cfg and tune_cfg.get('stage', 'pre') == 'pre':
-                    thresholds, _ = evaluator.find_optimal_thresholds(
+                    ens_thresholds, _ = evaluator.find_optimal_thresholds(
                         probabilities=weighted_vote_fraction,
                         ground_truth=subset_gt_labels,
                         tasks=tasks,
                         metric=tune_cfg.get('metric', 'f1'))
-                    #print(f"Thresholds for weighted voting fraction ensemble from tuning: {thresholds}")
                 # Compute threshold based labels
-                if thresholds is not None:
+                if ens_thresholds is not None:
                     pred_ensemble_labels = evaluator.threshold_based_predictions(
                         probs=torch.tensor(weighted_vote_fraction),
-                        thresholds=thresholds,
+                        thresholds=ens_thresholds,
                         tasks=tasks).numpy()
                 else:
                     print("No threshold tuning applied. Will take default threshold 0.5")
@@ -359,16 +412,17 @@ def main():
         #                                 n_components=3,
         #                                 save_dir=results_dir) # scp -r fkirchhofer@nerve.artorg.unibe.ch:nerve_folder_path /Users/fabri/Desktop
 
-        distinctiveness_files = ensemble_cfg.get('distinctiveness_files')
-        utils.plot_distinctiveness_heatmap_from_files(distinctiveness_files=distinctiveness_files,
-                                                      models=model_names,
-                                                      cmap="plasma",
-                                                      save_path=results_dir)
+        distinctiveness_files = ensemble_cfg.get('distinctiveness_files', None)
+        if tune_cfg.get('stage', 'pre') == 'pre':
+            utils.plot_distinctiveness_heatmap_from_files(distinctiveness_files=distinctiveness_files,
+                                                        models=model_names,
+                                                        cmap="plasma",
+                                                        save_path=results_dir)
 
 
-        utils.plot_distinctiveness_radar_from_files(distinctiveness_files=distinctiveness_files,
-                                                    models=model_names,
-                                                    save_path=results_dir)
+            utils.plot_distinctiveness_radar_from_files(distinctiveness_files=distinctiveness_files,
+                                                        models=model_names,
+                                                        save_path=results_dir)
         if do_grid_search:
             utils.plot_search_grid_heatmap(b_vals=grid_vals_b,
                                        a_vals=grid_vals_a,
@@ -392,8 +446,8 @@ def main():
         np.save(os.path.join(results_dir, 'f1_grid.npy'), f1_grid)
     if pred_ensemble_labels is not None:
         np.save(os.path.join(results_dir, 'ensemble_labels.npy'), pred_ensemble_labels)
-    if thresholds is not None:
-        np.save(os.path.join(results_dir, 'thresholds.npy'), thresholds)
+    if ens_thresholds is not None:
+        np.save(os.path.join(results_dir, 'thresholds.npy'), ens_thresholds)
     if per_model_voting_thresholds is not None:
         np.save(os.path.join(results_dir, 'per_model_voting_thresholds.npy'), per_model_voting_thresholds)
 

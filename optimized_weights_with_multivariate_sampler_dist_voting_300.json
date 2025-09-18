@@ -42,6 +42,13 @@
       "Consolidation": 0.08,
       "Edema": 0.39,
       "Pleural Effusion": 0.11
+    },
+    "ensemble": {
+      "Atelectasis": 0.68,
+      "Cardiomegaly": 0.65,
+      "Consolidation": 0.45,
+      "Edema": 0.68,
+      "Pleural Effusion": 0.34
     }
   },
   "Weights": {

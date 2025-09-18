@@ -115,22 +115,41 @@ class StrategyFactory:
             return v_fn
         
         if name == 'distinctiveness_weighted':
-            # Load distinctiveness values for each model
-            distinct_files = params.get('distinctiveness_files')
+            
+            # Optuna ptach - START
+
             distinct_vals_list = []
-            if distinct_files:
-                # Load JSON distinctiveness for each model
-                for file_path in distinct_files:
-                    with open(file_path, 'r') as f:
-                        distinct_vals_list.append(json.load(f))
-                #print(f"These is the list with the dist values: {distinct_vals_list}")
-            elif params.get('distinctiveness_values'):
-                # Accept distinctiveness values directly (list of dicts or lists)
-                print("Got em from list")
-                distinct_vals_list = params['distinctiveness_values']
+            cfg_weights_path = params.get('config_weights', None)
+            tuning_stage = (params.get('threshold_tuning', {}) or {}).get('stage', 'none')
+            if cfg_weights_path and tuning_stage == 'none':
+                with open(cfg_weights_path, 'r') as f:
+                    data = json.load(f)
+                weights_map = data.get('Weights', {})
+                model_names = params.get('model_names', list(weights_map.keys()))
+                for nm in model_names:
+                    if nm not in weights_map:
+                        raise ValueError(f"Model '{nm}' not found in JSON 'Weights'.")
+                    distinct_vals_list.append(weights_map[nm])  # dict: {class: weight}
+                print("Took optuna weights for dist weighted")
             else:
-                raise ValueError("Distinctiveness data not provided. Please specify 'distinctiveness_files' or "
-                                 "'distinctiveness_values'")
+            # Optuna ptach - END
+
+                # Load distinctiveness values for each model
+                distinct_files = params.get('distinctiveness_files')
+                #distinct_vals_list = []
+                if distinct_files:
+                    # Load JSON distinctiveness for each model
+                    for file_path in distinct_files:
+                        with open(file_path, 'r') as f:
+                            distinct_vals_list.append(json.load(f))
+                    #print(f"These is the list with the dist values: {distinct_vals_list}")
+                elif params.get('distinctiveness_values'):
+                    # Accept distinctiveness values directly (list of dicts or lists)
+                    print("Got em from list")
+                    distinct_vals_list = params['distinctiveness_values']
+                else:
+                    raise ValueError("Distinctiveness data not provided. Please specify 'distinctiveness_files' or "
+                                        "'distinctiveness_values'")
 
             num_models = len(distinct_vals_list)
             num_classes = len(tasks_list)
@@ -192,6 +211,7 @@ class StrategyFactory:
                 #weighted_sum = weighted_sum-np.min(weighted_sum, axis=1, keepdims=True) / (np.max(weighted_sum, axis=1, keepdims=True)-np.min(weighted_sum, axis=1, keepdims=True) + 1e-8)
                 return weighted_sum  # shape: (N, C) NumPy array            
             # make it accessible
+            distinctiveness_fn.weight_matrix = weight_matrix 
             distinctiveness_fn.weighted_sum = weight_matrix
             return distinctiveness_fn
         
@@ -204,14 +224,33 @@ class StrategyFactory:
             """
             # Load per-model distinctiveness dictionaries
             distinct_vals_list = []
-            if 'distinctiveness_files' in params:
-                for path in params['distinctiveness_files']:
-                    with open(path, 'r') as f:
-                        distinct_vals_list.append(json.load(f))
-            elif 'distinctiveness_values' in params:
-                distinct_vals_list = params['distinctiveness_values']
+            
+            
+            # Optuna patch - START
+            cfg_weights_path = params.get('config_weights', None)
+            tuning_stage = (params.get('threshold_tuning', {}) or {}).get('stage', 'none')
+            if cfg_weights_path and tuning_stage == 'none':
+                with open(cfg_weights_path, 'r') as f:
+                    data = json.load(f)
+                weights_map = data.get('Weights', {})
+                model_names = params.get('model_names', list(weights_map.keys()))
+                for nm in model_names:
+                    if nm not in weights_map:
+                        raise ValueError(f"Model '{nm}' not found in JSON 'Weights'.")
+                    distinct_vals_list.append(weights_map[nm])  # dict: {class: weight}
+                print("Took optuna weights for dist voting")
             else:
-                raise ValueError("Distinctiveness data required for voting: provide 'distinctiveness_files' or 'distinctiveness_values'.")
+
+            # Optuna prach - END
+            
+                if 'distinctiveness_files' in params:
+                    for path in params['distinctiveness_files']:
+                        with open(path, 'r') as f:
+                            distinct_vals_list.append(json.load(f))
+                elif 'distinctiveness_values' in params:
+                    distinct_vals_list = params['distinctiveness_values']
+                else:
+                    raise ValueError("Distinctiveness data required for voting: provide 'distinctiveness_files' or 'distinctiveness_values'.")
 
             num_models = len(distinct_vals_list)
             num_classes = len(tasks_list)

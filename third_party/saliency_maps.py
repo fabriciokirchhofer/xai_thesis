@@ -162,7 +162,7 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer,
-                            baseline=None) # Switch to None to set zero_baseline or baseline_tensor
+                            baseline=baseline_tensor) # Switch to None to set zero_baseline or baseline_tensor
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
                         heatmap = utils.deep_lift_layer_heatmap(
@@ -170,7 +170,7 @@ def main():
                             layer=layer,
                             input_tensor=img,
                             target_class=idx,
-                            baseline=None) # Switch to None to set zero_baseline or baseline_tensor
+                            baseline=baseline_tensor) # Switch to None to set zero_baseline or baseline_tensor
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -206,7 +206,7 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer,
-                            baseline=None) # Switch to None to set zero_baseline or baseline_tensor
+                            baseline=baseline_tensor) # Switch to None to set zero_baseline or baseline_tensor
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
                         heatmap = utils.deep_lift_layer_heatmap(
@@ -214,7 +214,7 @@ def main():
                             layer=layer,
                             input_tensor=img,
                             target_class=idx,
-                            baseline=None) # Switch to None to set zero_baseline or baseline_tensor
+                            baseline=baseline_tensor) # Switch to None to set zero_baseline or baseline_tensor
                         np.savez_compressed(cache_map_path, heatmap=heatmap)   
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
