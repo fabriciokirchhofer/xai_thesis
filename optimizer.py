@@ -30,55 +30,52 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(
-        description="Optimize ensemble weight matrix (and thresholds)."
-    )
-    parser.add_argument(
-        "--config", type=str, default="/home/fkirchhofer/repo/xai_thesis/config.json",
-        help="Path to JSON config file with model and ensemble settings."
-    )
-    parser.add_argument(
-        "--output", type=str, default= "/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler_dist_voting_300.json",
-        help="Path to save the optimized weights+thresholds JSON."
-    )
-    parser.add_argument(
-        "--no-normalize", action="store_true",
-        help="If set, do not normalize weights per class (otherwise weights sum to 1)."
-    )
-    parser.add_argument(
-        "--trials", type=int, default=300,
-        help="Number of Optuna trials per class (default: 30)."
-    )
+    parser = argparse.ArgumentParser(description="Optimize ensemble weight matrix (and thresholds).")
+    
+    parser.add_argument("--config", type=str, default="/home/fkirchhofer/repo/xai_thesis/config.json",
+        help="Path to JSON config file with model and ensemble settings.")
+    
+    parser.add_argument("--output", type=str, default= "/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler_TEMP.json",
+        help="Path to save the optimized weights+thresholds JSON.")
+    
+    parser.add_argument("--no-normalize", action="store_true",
+        help="If set, do not normalize weights per class (otherwise weights sum to 1).")
+    
+    parser.add_argument("--trials", type=int, default=300,
+        help="Number of Optuna trials per class (default: 30).")
+    
     args = parser.parse_args()
 
-    # ----- load config -----
+    # Reproducibility
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    # load config
     with open(args.config, "r") as f:
         config = json.load(f)
     ensemble_cfg = config.get("ensemble", {})
     eval_cfg = config.get("evaluation", {})
     tune_cfg = ensemble_cfg.get("threshold_tuning", {})
-    thresholds_path = ensemble_cfg.get("thresholds_path", None)
     ens_strategy = ensemble_cfg.get("strategy", "distinctiveness_voting")
+    ensemble_cfg['normalize_distinctiveness_by'] = 'task' # Ensure normalization happens accross tasks 
 
-    # ----- define tasks -----
+    # define tasks
     # full CheXpert 14 tasks order
     tasks = [
         "No Finding", "Enlarged Cardiomediastinum", "Cardiomegaly",
         "Lung Opacity", "Lung Lesion", "Edema",
         "Consolidation", "Pneumonia", "Atelectasis", "Pneumothorax",
-        "Pleural Effusion", "Pleural Other", "Fracture", "Support Devices"
-    ]
+        "Pleural Effusion", "Pleural Other", "Fracture", "Support Devices"]
+    
     # evaluation classes (override via config if provided)
-    eval_tasks = config.get(
-        "evaluation_sub_tasks",
-        ["Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Pleural Effusion"]
-    )
+    eval_tasks = config.get("evaluation_sub_tasks",
+        ["Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Pleural Effusion"])
 
     num_classes = len(eval_tasks)
     num_models = len(config["models"])
     model_names = [m["name"] for m in config["models"]]
 
-    # ----- prepare models -----
+    # prepare models 
     # get default args without interference
     saved_argv = sys.argv
     sys.argv = sys.argv[:1]
@@ -95,11 +92,14 @@ def main():
         Wrapper = model_classes.get_model_wrapper(m_args.model)
         models.append(Wrapper(tasks=tasks, model_args=m_args))
 
-    # ----- run models to get probabilities + true labels -----
-    use_test = eval_cfg.get("evaluate_test_set", False)
-    model_probs = []  # will be list of (N_samples x 14) arrays
-    all_gt_labels = None
 
+    # *********************************************************************
+    # ****************** Get probabilities + true labels ******************
+    # *********************************************************************
+    use_test = eval_cfg.get("evaluate_test_set", False)
+    
+    model_probs = []
+    all_gt_labels = None 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     for i, model in enumerate(models):
         # prepare loader
@@ -107,8 +107,11 @@ def main():
             default_data_conditions=False,
             batch_size_override=getattr(model.model_args, "batch_size", 16),
             test_set=use_test,
-            assign=True
-        )
+            assign=True)
+        logits = model.run_class_model()
+        raw_probs = torch.sigmoid(logits).cpu()
+        model_probs.append(raw_probs)      
+        
         # collect GT once
         if all_gt_labels is None:
             all_lbls = []
@@ -116,62 +119,11 @@ def main():
                 all_lbls.append(batch_lbl.numpy())
             all_gt_labels = np.vstack(all_lbls)
 
-        # run model from model_classes.py
-        logits = model.run_class_model().to(device)
-        if eval_cfg.get("use_logits", False):
-            probs = logits.detach().cpu().numpy()
-            print(f"Model {model_names[i]}: using raw logits")
-        else:
-            raw_probs = torch.sigmoid(logits).detach().cpu()
-            # reduce multiple views per patient
-            probs, gt_labels = utils.get_max_prob_per_view(
-                probs=raw_probs,
-                gt_labels=all_gt_labels,
-                tasks=tasks,
-                args=model.model_args
-            )
-        model_probs.append(probs)
-        print(f"Collected probs for model {model_names[i]} (shape {probs.shape})")
-
-    # stack array to shape (M, N, 14)
-    model_probs = np.stack(model_probs, axis=0)
-    N = model_probs.shape[1]
-    print(f"Stacked model_probs: {model_probs.shape}")
-
     # indices of eval_tasks within the full tasks list
     eval_indices = [tasks.index(c) for c in eval_tasks]
-
-
-    # To be Removed potentially - in Optuna optimization it is not the intention to pass previous thresholds
-    # if tune_cfg.get("stage", "pre") == "none":
-    #     # Optional loading of ensemble thresholds
-    #     if thresholds_path and os.path.exists(thresholds_path):
-    #         loaded = np.load(thresholds_path, allow_pickle=True).item()
-    #         ensemble_thresholds = []
-    #         for m_name in model_names:
-    #             thr_dict = loaded.get(m_name, {})
-    #             ensemble_thresholds.append([thr_dict.get(c, 0.5) for c in eval_tasks])
-    #         print("Loaded ensemble thresholds from file:", ensemble_thresholds)
-
-    # Threshold tuning
-    thresholds_by_model = None
-    if tune_cfg.get("stage", "pre") == "none":
-        print(">>> performing PRE‑ensemble threshold tuning per model")
-        thresholds_by_model = []
-        for m in range(num_models):
-            p_m = model_probs[m][:, eval_indices]       # (N x num_classes)
-            y_m = gt_labels[:, eval_indices]
-            thr_dict, _ = evaluator.find_optimal_thresholds(
-                probabilities=p_m,
-                ground_truth=y_m,
-                tasks=eval_tasks,
-                metric=tune_cfg.get("metric", "f1")
-            )
-            vec = [thr_dict[c] for c in eval_tasks]
-            thresholds_by_model.append(vec)
-            print(f" Model {model_names[m]} thresholds:", vec)
-    else:
-        print("No pre‑ensemble threshold tuning; using default 0.5 everywhere.")
+    
+    # stack to a single ndarray: (M, N, 14) - Used for both strategies the same way
+    model_probs_arr = np.stack(model_probs, axis=0)
 
 
     # ----------------------------------------------------------
@@ -200,61 +152,100 @@ def main():
 
             # Dist weighted section - START
             if ens_strategy == "distinctiveness_weighted":
-                pm = model_probs[:, :, eval_indices[idx]] # (M, N)
-                weighted_sum = (pm * w[:, None]).sum(axis=0) # (N,)
+
+                pm = model_probs_arr[:, :, eval_indices[idx]] # (M, N)
+                ensemble_probs = np.dot(w, pm)
+
+                # reduce multiple views per patient
+                ensemble_probs_view, subset_gt_labels = utils.get_max_prob_per_view(
+                    probs=ensemble_probs.reshape(-1,1),
+                    gt_labels=all_gt_labels[:, eval_indices[idx]].reshape(-1,1),
+                    tasks=[cls],
+                    args=model.model_args)
 
                 if tune_cfg.get("stage", "pre") == "pre":
                     thr_dict, _ = evaluator.find_optimal_thresholds(
-                            probabilities=weighted_sum.reshape(-1,1),
-                            ground_truth=gt_labels[:, eval_indices[idx]].reshape(-1,1),
-                            tasks         = [cls],
-                            metric        = tune_cfg.get("metric", "f1"))
+                            probabilities=ensemble_probs_view,
+                            ground_truth=subset_gt_labels,
+                            tasks=[cls],
+                            metric=tune_cfg.get("metric", "f1"))
                     t = float(thr_dict[cls])
-                    preds = (weighted_sum >= t).astype(int)
+                    preds = (ensemble_probs_view >= t).astype(int)
                 else:
-                    preds = (weighted_sum >= 0.5).astype(int)
+                    preds = (ensemble_probs_view >= 0.5).astype(int)
+                
+                #y_true = subset_gt_labels[:, eval_indices[idx]].astype(int)
+                return evaluator.f1_score(subset_gt_labels, preds, zero_division=0)
             # Dist weighted section - END
 
             # Voting ens structure - START
             elif ens_strategy == "distinctiveness_voting":
-                pm = model_probs[:, :, eval_indices[idx]]  # (M, N)
 
-                if thresholds_by_model is not None:
-                    # threshold each model's probs pre-ensemble per class
-                    bits = np.stack([
-                        (model_probs[m][:, eval_indices[idx]] >= thresholds_by_model[m][idx]).astype(float)
-                        for m in range(num_models)
-                    ], axis=0)  # (M, N)
-                    soft_vote = np.dot(w, bits)  # (N,)
-                else:
-                    # directly weighted sum of probabilities as soft votes
-                    soft_vote = np.dot(w, pm)    # (N,)
-                    soft_vote = np.clip(soft_vote, 0.0, 1.0)
+                pm = model_probs_arr[:, :, eval_indices[idx]]  # (M, N)
+                
+                votes_list = []
+                gt_view = None
 
-                # Always tune the ensemble cutoff inside the objective for consistency
-                thr_dict, _ = evaluator.find_optimal_thresholds(
-                    probabilities=soft_vote.reshape(-1, 1),
-                    ground_truth=gt_labels[:, eval_indices[idx]].reshape(-1, 1),
-                    tasks=[cls],
-                    metric=tune_cfg.get("metric", "f1")
-                )
+                for m in range(num_models):
+                    # reduce multiple views per patient
+                    model_max_probs, gt_model = utils.get_max_prob_per_view(
+                        probs=pm[m].reshape(-1,1),
+                        gt_labels=all_gt_labels[:, eval_indices[idx]].reshape(-1,1),
+                        tasks=[cls],
+                        args=model.model_args)
+
+                    gt_view = gt_model if gt_view is None else gt_view # gt_model (200,1)
+                    # Threshold tuning per model
+                    thresholds_by_model = None
+                    if tune_cfg.get("stage", "pre") == "pre":
+                        # print(">>> performing PRE‑ensemble threshold tuning per model")
+                        # thresholds_by_model = []
+                        # y_m = all_gt_labels[:, eval_indices]
+
+                        thresholds_by_model_dict, _ = evaluator.find_optimal_thresholds(
+                            probabilities=model_max_probs,
+                            ground_truth=gt_model,
+                            tasks=[cls],
+                            metric=tune_cfg.get("metric", "f1")) 
+                        thresholds_by_model = thresholds_by_model_dict[cls] # Get value out of dict                   
+
+                    if thresholds_by_model is not None:
+                        # threshold each model's probs pre-ensemble per class
+                        model_votes = (model_max_probs >= thresholds_by_model).astype(float)                        
+                    else:
+                        model_votes = (model_max_probs >= 0.5).astype(float)
+
+                    votes_list.append(model_votes.reshape(-1))
+
+                votes_arr = np.stack(votes_list, axis=0) # (M, N)               
+                soft_vote = np.dot(w, votes_arr)  # (N,)
+
+                # Threshold tuning per model
+                if tune_cfg.get("stage", "pre") == "pre":
+                    # Always tune the ensemble cutoff inside the objective for consistency
+                    thr_dict, _ = evaluator.find_optimal_thresholds(
+                        probabilities=soft_vote.reshape(-1, 1),
+                        ground_truth=gt_view,
+                        tasks=[cls],
+                        metric=tune_cfg.get("metric", "f1"))
                 t = float(thr_dict[cls])
                 preds = (soft_vote >= t).astype(int)
-                # Voting ens structure - END
+                #y_true = subset_gt_labels[:, eval_indices[idx]].astype(int)
+                return evaluator.f1_score(gt_view.ravel().astype(int), preds, zero_division=0) # subset_gt_labels / gt_view.ravel().astype(int)
+                    # Voting ens structure - END
+
             else:
                 raise ValueError(f"Unknown ensemble strategy: {ens_strategy}")
 
-            y_true = gt_labels[:, eval_indices[idx]].astype(int)
-            return evaluator.f1_score(y_true, preds, zero_division=0)
+
 
         study_name = f"ensemble_cls_{cls.replace(' ', '_')}"
         # only delete if it exists; otherwise ignore
         try:
             optuna.delete_study(study_name=study_name, storage=optuna_db)
             print("Deleted study.")
-        except KeyError:
-            print("no existing study under that name, so nothing to delete")# no existing study under that name, so nothing to delete
-            pass
+        except Exception:
+            print("no existing study under that name, so nothing to delete")
 
         # Used by default a TPE (Tree-structured Parzen Estimator)
         sampler = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42)
@@ -289,43 +280,68 @@ def main():
     # Final ensemble thresholds (per class) using best weights
     # -------------------------------
     ensemble_thresholds = {}
+    thresholds_by_model = None
     for idx, cls in enumerate(eval_tasks):
-        pm = model_probs[:, :, eval_indices[idx]]  # (M, N)
+        model_probs_arr = np.stack(model_probs, axis=0)
+        pm = model_probs_arr[:, :, eval_indices[idx]]  # (M, N)
 
         if ens_strategy == "distinctiveness_weighted":
             ens_scores = np.dot(weight_matrix[:, idx], pm)  # weighted prob averaging (N,)
+            ens_view, gt_view = utils.get_max_prob_per_view(
+                probs=ens_scores.reshape(-1, 1),
+                gt_labels=all_gt_labels[:, eval_indices[idx]].reshape(-1, 1),
+                tasks=[cls],
+                args=base_args
+            )
+
+
         elif ens_strategy == "distinctiveness_voting":
             if thresholds_by_model is None:
-                # average probs as soft votes
-                ens_scores = np.dot(weight_matrix[:, idx], pm)  # (N,)
-                ens_scores = np.clip(ens_scores, 0.0, 1.0)
-            else:
-                # weighted sum of binary votes
-                bits = np.stack([
-                    (model_probs[m][:, eval_indices[idx]] >= thresholds_by_model[m][idx]).astype(float)
-                    for m in range(num_models)
-                ], axis=0)  # (M, N)
-                ens_scores = np.dot(weight_matrix[:, idx], bits)  # (N,)
+                thresholds_by_model = [[] for _ in range(num_models)]
+            bits_list = []
+            gt_view = None
+            for m in range(num_models):
+                model_max_probs, gt_model = utils.get_max_prob_per_view(
+                    probs=pm[m].reshape(-1, 1),
+                    gt_labels=all_gt_labels[:, eval_indices[idx]].reshape(-1, 1),
+                    tasks=[cls],
+                    args=base_args
+                )
+                gt_view = gt_model if gt_view is None else gt_view
+                if tune_cfg.get("stage", "pre") == "pre":
+                    thr_m_dict, _ = evaluator.find_optimal_thresholds(
+                        probabilities=model_max_probs,
+                        ground_truth=gt_model,
+                        tasks=[cls],
+                        metric=tune_cfg.get("metric", "f1")
+                    )
+                    t_m = float(thr_m_dict[cls])
+                    thresholds_by_model[m].append(t_m)
+                else:
+                    t_m = 0.5
+                bits_list.append((model_max_probs.ravel() >= t_m).astype(float))
+            votes_arr = np.stack(bits_list, axis=0)  # (M, N)
+            ens_view = np.dot(weight_matrix[:, idx], votes_arr).reshape(-1, 1)
+
         else:
             raise ValueError(f"Unknown ensemble strategy: {ens_strategy}")
 
         # find best cutoff for this class on final ensemble scores
         thr_dict, _ = evaluator.find_optimal_thresholds(
-            probabilities=ens_scores.reshape(-1, 1),
-            ground_truth=gt_labels[:, eval_indices[idx]].reshape(-1, 1),
+            probabilities=ens_view,
+            ground_truth=gt_view,
             tasks=[cls],
-            metric=tune_cfg.get("metric", "f1")
-        )
+            metric=tune_cfg.get("metric", "f1"))
+        
         t_ens = float(thr_dict[cls])
         ensemble_thresholds[cls] = t_ens
 
         # compute final F1 with this cutoff (store as the official class score)
-        final_preds = (ens_scores >= t_ens).astype(int)
-        f1_final = evaluator.f1_score(
-            gt_labels[:, eval_indices[idx]].astype(int),
-            final_preds,
-            zero_division=0
-        )
+        final_preds = (ens_view.ravel() >= t_ens).astype(int)
+        f1_final = evaluator.f1_score(gt_view.ravel().astype(int), final_preds, zero_division=0)
+
+
+
         output["F1_scores"][cls] = round(float(f1_final), 6)
         print(f"[POST] Class {cls}: threshold={t_ens:.3f} → F1={f1_final:.4f}")
 
@@ -339,13 +355,15 @@ def main():
         # Ensemble thresholds per class
         thresholds_out["ensemble"] = {cls: float(round(ensemble_thresholds[cls], 6))
             for cls in eval_tasks}
+        
+
     elif ens_strategy == "distinctiveness_voting":
         # Per-model thresholds
         if thresholds_by_model is not None and tune_cfg.get("stage") == "pre":
             for m_idx, m_name in enumerate(model_names):
-                thresholds_per_class = {eval_tasks[c]: float(round(thresholds_by_model[m_idx][c], 6))
+                thresholds_out[m_name] = {eval_tasks[c]: float(round(thresholds_by_model[m_idx][c], 6))
                     for c in range(num_classes)}
-                thresholds_out[m_name] = thresholds_per_class
+        
         # Ensemble thresholds
         thresholds_out["ensemble"] = {cls: float(round(ensemble_thresholds[cls], 6))
             for cls in eval_tasks}

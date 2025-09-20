@@ -50,7 +50,7 @@
   ],
 
   "ensemble": {
-    "strategy": "distinctiveness_weighted",
+    "strategy": "distinctiveness_voting",
     "normalize_distinctiveness_by": "task",
     "threshold_tuning": {
       "stage": "none",
@@ -64,7 +64,7 @@
       "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_test_640_repetition/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
       "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_test_640_repetition/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
     ],
-    "config_weights":"/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler_dist_weighted_300.json"
+    "config_weights":"/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler_dist_voting_300.json"
   },
 
   "evaluation": {
@@ -97,7 +97,7 @@
 
   "output": {
     "results_dir": "ensemble_optuna",
-    "experiment_name": "001_distictiveness_weighted_test_5m",
+    "experiment_name": "001_distictiveness_voting_test_5m",
     "plot_models_analysis": true
   }
 }

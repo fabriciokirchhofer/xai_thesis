@@ -63,9 +63,7 @@ def main():
 
         # Apply any additional overrides (e.g., input_size, num_classes).
         for key, val in model_cfg.get('overrides', {}).items():
-            # set attribute by name into args_model
-            #print(f"For {model_cfg['name']}:{args_model.model} override following default arguments with:\tkey:{key}\tval:{val}.\n"
-                  #"Make sure prepare_data_loader doesn't accept only default values.\n")
+               #"Make sure prepare_data_loader doesn't accept only default values.\n")
             setattr(args_model, key, val)
 
         # Retrieve the appropriate model wrapper class using model_classes
@@ -85,12 +83,12 @@ def main():
                                             assign=True)
         logits = model.run_class_model()
         if config['evaluation'].get('use_logits', False):
-            preds = logits.cpu()
+            raw_preds = logits.cpu()
             print(f"Ensemble evaluation based on logits.")
         else:
-            preds = torch.sigmoid(logits).cpu()
+            raw_preds = torch.sigmoid(logits).cpu()
             print(f"Ensemble evaluation based on probabilities.")
-        model_probs.append(preds)
+        model_probs.append(raw_preds)
 
     gt_labels = []
     for _, labels in data_loader:
@@ -216,11 +214,11 @@ def main():
     else:
         # preds: list of tensors or arrays, or stacked tensor
         if isinstance(model_probs, list):
-            if torch.is_tensor(preds[0]):
+            if torch.is_tensor(raw_preds[0]):
                 stack = torch.stack(model_probs, dim=0).cpu().numpy()
             else:
                 stack = np.stack(model_probs, axis=0)
-        elif torch.is_tensor(preds):
+        elif torch.is_tensor(raw_preds):
             stack = model_probs.cpu().numpy()
         else:
             stack = np.array(model_probs)
@@ -243,7 +241,7 @@ def main():
                 # Preserve model order as in StrategyFactory
                 model_names_cfg = ensemble_cfg.get('model_names', [m["name"] for m in config["models"]])
 
-                # ---- per-model thresholds (shape: M x C, aligned to full `tasks`) ----
+                # per-model thresholds (shape: M x C, aligned to full `tasks`)
                 per_model_thresholds_arrays = []
                 for name in model_names_cfg:
                     md = thr_map.get(name, {})
@@ -252,7 +250,7 @@ def main():
                 if len(per_model_thresholds_arrays) > 0:
                     per_model_thresholds = np.stack(per_model_thresholds_arrays, axis=0)  # (M, C)
 
-                # ---- ensemble thresholds (dict for later thresholding) ----
+                # ensemble thresholds (dict for later thresholding) 
                 ens_thr_map = thr_map.get("ensemble", {})
                 if isinstance(ens_thr_map, dict) and len(ens_thr_map) > 0:
                     ens_thresholds = {cls: float(ens_thr_map.get(cls, 0.5)) for cls in tasks}

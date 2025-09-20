@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import os
 import json
 import pandas as pd
 from ensemble import evaluator
@@ -115,13 +116,11 @@ class StrategyFactory:
             return v_fn
         
         if name == 'distinctiveness_weighted':
-            
-            # Optuna ptach - START
-
             distinct_vals_list = []
+            # Optuna ptach - START
             cfg_weights_path = params.get('config_weights', None)
             tuning_stage = (params.get('threshold_tuning', {}) or {}).get('stage', 'none')
-            if cfg_weights_path and tuning_stage == 'none':
+            if cfg_weights_path and os.path.exists(cfg_weights_path) and tuning_stage == 'none':
                 with open(cfg_weights_path, 'r') as f:
                     data = json.load(f)
                 weights_map = data.get('Weights', {})
@@ -136,7 +135,6 @@ class StrategyFactory:
 
                 # Load distinctiveness values for each model
                 distinct_files = params.get('distinctiveness_files')
-                #distinct_vals_list = []
                 if distinct_files:
                     # Load JSON distinctiveness for each model
                     for file_path in distinct_files:
@@ -229,7 +227,7 @@ class StrategyFactory:
             # Optuna patch - START
             cfg_weights_path = params.get('config_weights', None)
             tuning_stage = (params.get('threshold_tuning', {}) or {}).get('stage', 'none')
-            if cfg_weights_path and tuning_stage == 'none':
+            if cfg_weights_path and os.path.exists(cfg_weights_path) and tuning_stage == 'none':
                 with open(cfg_weights_path, 'r') as f:
                     data = json.load(f)
                 weights_map = data.get('Weights', {})
@@ -240,7 +238,6 @@ class StrategyFactory:
                     distinct_vals_list.append(weights_map[nm])  # dict: {class: weight}
                 print("Took optuna weights for dist voting")
             else:
-
             # Optuna prach - END
             
                 if 'distinctiveness_files' in params:

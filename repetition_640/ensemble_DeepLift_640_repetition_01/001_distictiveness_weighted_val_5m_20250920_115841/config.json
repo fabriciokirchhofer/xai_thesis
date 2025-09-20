@@ -1,5 +1,5 @@
 {
-  "device": "cuda:2",
+  "device": "cuda:5",
 
   "models": [
     {
@@ -53,25 +53,25 @@
     "strategy": "distinctiveness_weighted",
     "normalize_distinctiveness_by": "task",
     "threshold_tuning": {
-      "stage": "none",
+      "stage": "pre",
       "metric": "f1"},
     "thresholds_path": "tbd",
     "per_model_voting_thresholds_path": "tbd",
     "distinctiveness_files": [
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_test_640_repetition/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_test_640_repetition/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_test_640_repetition/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_test_640_repetition/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
-      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_GradCAM_test_640_repetition/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_DeepLift_val_640_w_baseline_repetition/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_DeepLift_val_640_w_baseline_repetition/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_DeepLift_val_640_w_baseline_repetition/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_DeepLift_val_640_w_baseline_repetition/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_DeepLift_val_640_w_baseline_repetition/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
     ],
-    "config_weights":"/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler_dist_weighted_300.json"
+    "config_weights":"tbd"
   },
 
   "evaluation": {
     "metrics": ["AUROC", "F1", "Youden", "Accuracy"],
     "evaluation_sub_tasks": ["Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Pleural Effusion"],
     "use_logits": false,
-    "evaluate_test_set": true,
+    "evaluate_test_set": false,
     "umap_metric": "cosine"
   },
 
@@ -85,19 +85,19 @@
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "GradCAM",
+      "method": "DeepLift",
       "map_folder": "saliency_maps_GradCAM_TEMP_TO_OVERRIDE",
-      "cache_folder": "heatmap_cache_GradCAM_val_640_repetition",
+      "cache_folder": "heatmap_cache_DeepLift_val_640_w_baseline_repetition",
       "manifold_name": "ckpt_r_ignore_3x_ep2_2"},
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity_GradCAM_val_640_repetition"
+      "output_folder": "distinctiveness_cos_similarity_DeepLift_val_640_w_baseline_repetition"
     }
   },
 
   "output": {
-    "results_dir": "ensemble_optuna",
-    "experiment_name": "001_distictiveness_weighted_test_5m",
+    "results_dir": "ensemble_DeepLift_640_repetition",
+    "experiment_name": "001_distictiveness_weighted_val_5m",
     "plot_models_analysis": true
   }
 }
