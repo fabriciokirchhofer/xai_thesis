@@ -1,0 +1,84 @@
+{
+  "F1_scores": {
+    "Atelectasis": 0.738255,
+    "Cardiomegaly": 0.657718,
+    "Consolidation": 0.75,
+    "Edema": 0.744681,
+    "Pleural Effusion": 0.832117,
+    "Final_Average": 0.744554
+  },
+  "Thresholds": {
+    "ModelA": {
+      "Atelectasis": 0.21,
+      "Cardiomegaly": 0.04,
+      "Consolidation": 0.09,
+      "Edema": 0.28,
+      "Pleural Effusion": 0.25
+    },
+    "ModelB": {
+      "Atelectasis": 0.2,
+      "Cardiomegaly": 0.07,
+      "Consolidation": 0.07,
+      "Edema": 0.24,
+      "Pleural Effusion": 0.39
+    },
+    "ModelC": {
+      "Atelectasis": 0.21,
+      "Cardiomegaly": 0.09,
+      "Consolidation": 0.07,
+      "Edema": 0.18,
+      "Pleural Effusion": 0.36
+    },
+    "ModelD": {
+      "Atelectasis": 0.2,
+      "Cardiomegaly": 0.05,
+      "Consolidation": 0.08,
+      "Edema": 0.38,
+      "Pleural Effusion": 0.17
+    },
+    "ModelE": {
+      "Atelectasis": 0.14,
+      "Cardiomegaly": 0.04,
+      "Consolidation": 0.08,
+      "Edema": 0.39,
+      "Pleural Effusion": 0.11
+    }
+  },
+  "Weights": {
+    "ModelA": {
+      "Atelectasis": 0.244602,
+      "Cardiomegaly": 0.236376,
+      "Consolidation": 0.327909,
+      "Edema": 0.239052,
+      "Pleural Effusion": 0.228329
+    },
+    "ModelB": {
+      "Atelectasis": 0.356288,
+      "Cardiomegaly": 0.252052,
+      "Consolidation": 0.074759,
+      "Edema": 0.265811,
+      "Pleural Effusion": 0.110827
+    },
+    "ModelC": {
+      "Atelectasis": 0.071714,
+      "Cardiomegaly": 0.118824,
+      "Consolidation": 0.156568,
+      "Edema": 0.086421,
+      "Pleural Effusion": 0.07631
+    },
+    "ModelD": {
+      "Atelectasis": 0.221946,
+      "Cardiomegaly": 0.219348,
+      "Consolidation": 0.196343,
+      "Edema": 0.211022,
+      "Pleural Effusion": 0.468883
+    },
+    "ModelE": {
+      "Atelectasis": 0.105449,
+      "Cardiomegaly": 0.1734,
+      "Consolidation": 0.244421,
+      "Edema": 0.197693,
+      "Pleural Effusion": 0.115651
+    }
+  }
+}

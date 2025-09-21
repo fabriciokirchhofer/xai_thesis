@@ -1,0 +1,37 @@
+{
+    "accuracy": 0.6585714221000671,
+    "youden_index": {
+        "No Finding": 0.6007957458496094,
+        "Enlarged Cardiomediastinum": 0.0,
+        "Cardiomegaly": 0.3089100122451782,
+        "Lung Opacity": 0.0,
+        "Lung Lesion": 0.4522613286972046,
+        "Edema": 0.660940408706665,
+        "Consolidation": 0.5803570747375488,
+        "Pneumonia": 0.27083325386047363,
+        "Atelectasis": 0.440000057220459,
+        "Pneumothorax": 0.4484536647796631,
+        "Pleural Effusion": 0.6102941036224365,
+        "Pleural Other": 0.8090453147888184,
+        "Fracture": -1.0,
+        "Support Devices": 0.5423542261123657
+    },
+    "f1_score": {
+        "No Finding": 0.5060240963855421,
+        "Enlarged Cardiomediastinum": 0.6885245901639345,
+        "Cardiomegaly": 0.5609756097560976,
+        "Lung Opacity": 0.7341772151898733,
+        "Lung Lesion": 0.018018018018018018,
+        "Edema": 0.6605504587155964,
+        "Consolidation": 0.6111111111111112,
+        "Pneumonia": 0.11320754716981131,
+        "Atelectasis": 0.6734693877551021,
+        "Pneumothorax": 0.3157894736842105,
+        "Pleural Effusion": 0.7328244274809161,
+        "Pleural Other": 0.05,
+        "Fracture": 0.0,
+        "Support Devices": 0.7927927927927928
+    },
+    "average_youden_index": 0.5201002955436707,
+    "average_f1_score": 0.6477861989637648
+}
