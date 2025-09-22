@@ -46,7 +46,7 @@ def _mean_dist(preds_list):
 
 class StrategyFactory:
     TASKS = ["No Finding", "Enlarged Cardiomediastinum", "Cardiomegaly", "Lung Opacity",
-     "Lung Lesion", "Edema","Consolidation", "Pneumoni", "Atelectasis", "Pneumothorax",
+     "Lung Lesion", "Edema","Consolidation", "Pneumonia", "Atelectasis", "Pneumothorax",
     "Pleural Effusion", "Pleural Other", "Fracture", "Support Devices"]
 
     @staticmethod
@@ -73,47 +73,21 @@ class StrategyFactory:
                     return np.mean(arr, axis=0)
             return avg_fn
 
-        # Weighted average with fixed weights
-        if name == 'weighted':
-            weights = params.get('weights') # TODO: Define 'weights' in the config file. In run_experiments.py it will be called as ensemble_cfg (ca line 102)
-            assert weights is not None, "Weights must be provided for weighted strategy"
-            weights = np.array(weights, dtype=float)
-            def w_fn(preds, all_targets=None, a_val=None, b_val=None):
-                # preds: list of tensors or numpy arrays
-                if isinstance(preds, list) and torch.is_tensor(preds[0]):
-                    stack = torch.stack(preds, dim=0).numpy()
-                elif isinstance(preds, list):
-                    stack = np.stack(preds, axis=0)
-                else:
-                    stack = np.stack(preds, axis=0)
-                # Normalize weights
-                w = weights / weights.sum()
-                # Weighted sum across model axis (axis=0)
-                combined = np.tensordot(stack, w, axes=([0], [0]))
-                return combined
-            return w_fn
+        if name == 'average_voting':
+            """
+            The models receive each equal weight. Threshold is computed first for every model and then after for the ensemble.
+            Threshold is computed for each class and is set by default to 0.5.
+            """
 
-        # Model weight based on distance from mean
-        if name == 'mean_distance_weighted':
-            return lambda preds: _mean_dist(preds)
+            def av_soft(preds, all_targets, a_val=None, b_val=None):
 
-        # Majority voting thresholded at vote_threshold
-        if name == 'voting':
-            thresh = params.get('vote_threshold', None)
-            if thresh == None:
-                print("No thresholds passed - will take default 0.5")
-                thresh = 0.5
-            def v_fn(preds, all_targets=None, a_val=None, b_val=None):
-                # preds: list of tensors or numpy arrays
-                if isinstance(preds, list) and torch.is_tensor(preds[0]):
-                    arr = torch.stack(preds, dim=0).numpy()
-                else:
-                    arr = np.stack(preds, axis=0)
-                    #print(f"Thresholds: {thresh}")
-                votes = (arr >= thresh).astype(int)
-                maj = (votes.sum(axis=0) > (arr.shape[0] / 2)).astype(float)
-                return maj
-            return v_fn
+                avg_votes = np.mean(preds, axis=0)
+                #avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6) # Invert for ablation study
+
+                return avg_votes # shape (N, C), in [0,1]
+            return av_soft
+        
+
         
         if name == 'distinctiveness_weighted':
             distinct_vals_list = []
@@ -212,7 +186,11 @@ class StrategyFactory:
             distinctiveness_fn.weight_matrix = weight_matrix 
             distinctiveness_fn.weighted_sum = weight_matrix
             return distinctiveness_fn
-        
+       
+       
+
+
+
 
         if name == 'distinctiveness_voting':
             """
@@ -299,20 +277,31 @@ class StrategyFactory:
             return dv_soft
         
 
-        if name == 'average_voting':
-            """
-            The models receive each equal weight. Threshold is computed first for every model and then after for the ensemble.
-            Threshold is computed for each class and is set by default to 0.5.
-            """
 
-            def av_soft(preds, all_targets, a_val=None, b_val=None):
+                # Weighted average with fixed weights
+        if name == 'weighted':
+            weights = params.get('weights') # TODO: Define 'weights' in the config file. In run_experiments.py it will be called as ensemble_cfg (ca line 102)
+            assert weights is not None, "Weights must be provided for weighted strategy"
+            weights = np.array(weights, dtype=float)
+            def w_fn(preds, all_targets=None, a_val=None, b_val=None):
+                # preds: list of tensors or numpy arrays
+                if isinstance(preds, list) and torch.is_tensor(preds[0]):
+                    stack = torch.stack(preds, dim=0).numpy()
+                elif isinstance(preds, list):
+                    stack = np.stack(preds, axis=0)
+                else:
+                    stack = np.stack(preds, axis=0)
+                # Normalize weights
+                w = weights / weights.sum()
+                # Weighted sum across model axis (axis=0)
+                combined = np.tensordot(stack, w, axes=([0], [0]))
+                return combined
+            return w_fn
 
-                avg_votes = np.mean(preds, axis=0)
-                #avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6) # Invert for ablation study
+        # Model weight based on distance from mean
+        if name == 'mean_distance_weighted':
+            return lambda preds: _mean_dist(preds)
 
-                return avg_votes # shape (N, C), in [0,1]
-            return av_soft
-        
 
         if name == 'random_weighted':
             # Optional seed for reproducibility
@@ -347,6 +336,25 @@ class StrategyFactory:
                 return np.tensordot(arr, w, axes=([0], [0]))
 
             return rand_fn
+        
+
+        # Majority voting thresholded at vote_threshold - Not the one used as BASELINE
+        if name == 'voting':
+            thresh = params.get('vote_threshold', None)
+            if thresh == None:
+                print("No thresholds passed - will take default 0.5")
+                thresh = 0.5
+            def v_fn(preds, all_targets=None, a_val=None, b_val=None):
+                # preds: list of tensors or numpy arrays
+                if isinstance(preds, list) and torch.is_tensor(preds[0]):
+                    arr = torch.stack(preds, dim=0).numpy()
+                else:
+                    arr = np.stack(preds, axis=0)
+                    #print(f"Thresholds: {thresh}")
+                votes = (arr >= thresh).astype(int)
+                maj = (votes.sum(axis=0) > (arr.shape[0] / 2)).astype(float)
+                return maj
+            return v_fn
         
 
 # *****************************************************
