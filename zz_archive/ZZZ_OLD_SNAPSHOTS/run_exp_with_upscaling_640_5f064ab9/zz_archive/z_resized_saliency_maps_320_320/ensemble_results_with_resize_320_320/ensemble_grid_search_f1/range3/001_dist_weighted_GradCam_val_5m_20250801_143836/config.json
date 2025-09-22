@@ -1,0 +1,101 @@
+{
+  "models": [
+    {
+      "name": "ModelA",
+      "_identifier": "ckpt_d_ignore_1",
+      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_1/epoch=2-chexpert_competition_AUROC=0.87_v1.ckpt",
+      "architecture": "DenseNet121",
+      "overrides": {
+        "batch_size": 64
+      }
+    },
+    {
+      "name": "ModelB",
+      "_identifier": "ckpt_d_ignore_2",
+      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_2/epoch=2-chexpert_competition_AUROC=0.88.ckpt",
+      "architecture": "DenseNet121",
+      "overrides": {
+        "batch_size": 64
+      }
+    },
+    {
+      "name": "ModelC",
+      "_identifier": "ckpt_d_ignore_3",
+      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/densenet121/uncertainty/densenet_ignore_3/epoch=2-chexpert_competition_AUROC=0.88.ckpt",
+      "architecture": "DenseNet121",
+      "overrides": {
+        "batch_size": 64
+      }
+    },
+    {
+      "name": "ModelD",
+      "_identifier": "ckpt_r_ignore_3x_ep1",
+      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=1-chexpert_competition_AUROC=0.87.ckpt",
+      "architecture": "ResNet152",
+      "overrides": {
+        "batch_size": 64
+      }
+    },
+    {
+      "name": "ModelE",
+      "_identifier": "ckpt_r_ignore_3x_ep2_2",
+      "checkpoint_path": "/home/fkirchhofer/repo/xai_thesis/third_party/pretrainedmodels/resnet152/resnet_ignore_3/epoch=2-chexpert_competition_AUROC=0.87.ckpt",
+      "architecture": "ResNet152",
+      "overrides": {
+        "batch_size": 64
+      }
+    }
+  ],
+
+  "ensemble": {
+    "strategy": "distinctiveness_weighted",
+    "normalize_distinctiveness_by": "task",
+    "threshold_tuning": {
+      "stage": "post",
+      "metric": "f1"},
+    "thresholds_path": "tbd",
+    "per_model_voting_thresholds_path": "tbd",
+    "distinctiveness_files": [
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_GradCAM_val_set/DenseNet121/ckpt_d_ignore_3_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_GradCAM_val_set/ResNet152/ckpt_r_ignore_3x_ep1_class_wise_distinctiveness.json",
+      "/home/fkirchhofer/repo/xai_thesis/distinctiveness_values/distinctiveness_cos_similarity_GradCAM_val_set/ResNet152/ckpt_r_ignore_3x_ep2_2_class_wise_distinctiveness.json"
+    ]
+  },
+
+  "grid_search":{
+    "perform_grid_search": "true",
+    "grid_val_a": 3,
+    "grid_val_b": 3,
+    "step_size": 0.01
+  },
+
+  "evaluation": {
+    "metrics": ["AUROC", "F1", "Youden", "Accuracy"],
+    "evaluation_sub_tasks": ["Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Pleural Effusion"],
+    "use_logits": false,
+    "evaluate_test_set": false,
+    "umap_metric": "cosine"
+  },
+
+  "saliency_script": {
+    "base_dir": "~/repo/xai_thesis/",
+    "saliency":{
+      "method": "DeepLift",
+      "map_folder": "saliency_maps_DeepLift_val_set",
+      "cache_folder": "heatmap_cache_DeepLift_val_set",
+      "manifold_name": "ckpt_d_ignore_1"
+    },
+    "distinctiveness":{
+      "function": "cosine_similarity",
+      "output_folder": "distinctiveness_cos_similarity_DeepLift_val_set"
+    }
+  },
+
+  "output": {
+    "results_dir": "ensemble_grid_search_f1",
+    "experiment_name": "001_dist_weight_GradCam_val_5m",
+    "plot_models_analysis": true
+  }
+}

@@ -1,0 +1,9 @@
+__pycache__/
+*.log
+*.csv
+*.json
+venv/
+data/
+models/
+third_party/cheXlocalize/.git/
+third_party/TestSubFolder/.git/

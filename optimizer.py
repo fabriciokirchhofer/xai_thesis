@@ -16,7 +16,6 @@ Usage:
         [--trials 50]
 """
 import json
-import os
 import sys
 import copy
 import numpy as np

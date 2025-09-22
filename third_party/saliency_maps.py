@@ -236,7 +236,7 @@ def main():
             else:
                 raise ValueError(f"Unknown saliency map processing mode: {args.saliency}")
             heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
-                                      target_size=(640, 640), # heatmap.shape
+                                      target_size=(640, 640), #  1280, 1280
                                       saliency_method=method, 
                                       flatten=True)
             
