@@ -157,25 +157,41 @@ def plot_scatter_per_class(distinct_w: dict, optuna_w: dict, outdir: str, baseli
         x = np.array(dw, dtype=float)
         y = np.array(ow, dtype=float)
 
+        # --- axis limits: zoom to region of interest with small padding ---
+        pad_x = max(0.05, 0.1 * (x.max() - x.min() + 1e-9))
+        pad_y = max(0.05, 0.1 * (y.max() - y.min() + 1e-9))
+        x_min, x_max = x.min() - pad_x, x.max() + pad_x
+        y_min, y_max = y.min() - pad_y, y.max() + pad_y
+
         plt.figure(figsize=(6, 6))
         plt.scatter(x, y, marker="x", s=100)
+
         # annotate points with model labels
         for i, label in enumerate(MODEL_LABELS):
-            plt.text(x[i] + 0.01, y[i] + 0.01, label, fontsize=9)
+            plt.text(x[i] + 0.01 * (x_max - x_min),
+                     y[i] + 0.01 * (y_max - y_min),
+                     label, fontsize=9)
 
-        # baseline lines for equal weight
+        # baseline lines (equal weighting 1/5)
         plt.axhline(baseline, color="gray", linestyle="--", linewidth=1)
         plt.axvline(baseline, color="gray", linestyle="--", linewidth=1)
 
-        # best fit line (if variance exists)
+        # --- regression line from Pearson correlation (true slope) ---
+        # m = r * (std_y / std_x), b = y_mean - m * x_mean
         if np.std(x) > 0 and np.std(y) > 0:
-            m, b = np.polyfit(x, y, 1)
-            xx = np.linspace(min(x.min(), 0), max(x.max(), 1), 100)
-            plt.plot(xx, m * xx + b, color="red", linewidth=1)
+            r, _ = pearsonr(x, y)
+            m = r * (np.std(y, ddof=1) / np.std(x, ddof=1))
+            b = np.mean(y) - m * np.mean(x)
+            xx = np.linspace(x_min, x_max, 200)
+            yy = m * xx + b
+            plt.plot(xx, yy, color="red", linewidth=1, label=f"OLS line (r={r:.2f})")
+            plt.legend(frameon=False)
 
         plt.xlabel("Distinctiveness-based weight")
         plt.ylabel("Optuna-optimized weight")
         plt.title(f"Optuna vs Distinctiveness — {cls}")
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, y_max)
         plt.tight_layout()
         fn = os.path.join(outdir, f"scatter_{cls.replace(' ', '_')}.png")
         plt.savefig(fn, dpi=300)
@@ -219,13 +235,13 @@ def plot_correlation_heatmap(distinct_w: dict, optuna_w: dict, outpath: str, cor
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--distinct-root", default="/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_LRP_val_1280_24.09.2025",
+    ap.add_argument("--distinct-root", default="/home/fkirchhofer/repo/xai_thesis/A_experiments_FINAL_01/distinctiveness_values/distinctiveness_cos_similarity_IG_val_original_no_baseline_27.09.2025",
                      help="Root folder to walk for *class_wise_distinctiveness.json files")
     
     ap.add_argument("--optuna-json", default="/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler_dist_weighted_300.json",
                     help="Path to Optuna weights JSON")
     
-    ap.add_argument("--outdir", default="weight_correlation_outputs", 
+    ap.add_argument("--outdir", default="/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/correlation_optuna_dist_weight_vs_IG_val_original_no_baseline", 
                     help="Output directory")
     
     ap.add_argument("--baseline", type=float, default=0.2, 
