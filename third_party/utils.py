@@ -33,18 +33,157 @@ except (json.JSONDecodeError, ValueError, OSError) as e:
     logger.warning(f"Defaulting to: {DEVICE}")
 
 
+
+
+
+#-------------------------------------------------------------
+# ************* Support reading config.json file *************
+#-------------------------------------------------------------
+
+# Parse config
+import os
+import re
+from copy import deepcopy
+
+class _SafeDict(dict):
+    def __missing__(self, key):
+        # Leave unknown placeholders intact (so you notice them)
+        return "{" + key + "}"
+
+def _flatten_context(config: dict) -> dict:
+    """
+    Build a flat context from nested config for templating.
+
+    Exposes:
+      - method            : saliency method (e.g., "GradCAM", "LRP")
+      - strategy          : ensemble.strategy
+      - stage             : label for path names -> "val" (if pre) or "test" (if none/other)
+      - val / test        : mutually-exclusive toggles for quick naming
+      - heatmap_scaling   : string token from saliency.saliency.heatmap_scaling
+      - output_folder     : pre-resolved folder from saliency_script.distinctiveness.output_folder (so it can be reused elsewhere)
+    """
+    ctx = {}
+
+    # --- method & strategy
+    method = (config.get("saliency_script", {})
+                    .get("saliency", {})
+                    .get("method", ""))
+    ctx["method"] = method
+
+    strategy = (config.get("ensemble", {})
+                      .get("strategy", ""))
+    ctx["strategy"] = strategy
+
+    # --- stage mapping -> {stage} == "val" (pre) or "test" (none/other)
+    raw_stage = (config.get("ensemble", {})
+                        .get("threshold_tuning", {})
+                        .get("stage", "none"))
+    raw_stage = str(raw_stage).strip().lower()
+    if raw_stage == "pre":
+        ctx["stage"] = "val"
+        ctx["val"]   = "val"
+        ctx["test"]  = ""
+    else:  # treat "none" or any other as test phase for naming
+        ctx["stage"] = "test"
+        ctx["val"]   = ""
+        ctx["test"]  = "test"
+
+    # --- heatmap_scaling: keep as a stable string for filenames/placeholders
+    # Accepts number-like or "original"; we keep the literal string for templating.
+    scaling = (config.get("saliency_script", {})
+                      .get("saliency", {})
+                      .get("heatmap_scaling", ""))
+
+    # Normalize to a string for folder tokens: "original" or e.g. "320"
+    if isinstance(scaling, (int, float)):
+        ctx["heatmap_scaling"] = str(int(scaling))
+    elif isinstance(scaling, str):
+        s = scaling.strip().lower()
+        if s == "original":
+            ctx["heatmap_scaling"] = "original"
+        else:
+            # if it's numeric-like in a string, keep it as-is (e.g., "320")
+            ctx["heatmap_scaling"] = scaling
+    else:
+        # unknown type → empty token to avoid breaking folder names
+        ctx["heatmap_scaling"] = ""
+
+    # --- derived tokens that others may reuse (e.g., {output_folder})
+    try:
+        of_tmpl = (config.get("saliency_script", {})
+                          .get("distinctiveness", {})
+                          .get("output_folder"))
+        if isinstance(of_tmpl, str):
+            ctx["output_folder"] = of_tmpl.format_map(_SafeDict(ctx))
+    except Exception:
+        pass
+
+    return ctx
+
+_placeholder_pattern = re.compile(r"{([A-Za-z0-9_.-]+)}")
+
+def _expand_placeholders(obj, context: dict):
+    """
+    Recursively expand {placeholders} in strings inside nested dict/list/str.
+    Unknown placeholders are left as-is.
+    """
+    if isinstance(obj, dict):
+        return {k: _expand_placeholders(v, context) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_expand_placeholders(x, context) for x in obj]
+    if isinstance(obj, str):
+        if "{" in obj and "}" in obj and _placeholder_pattern.search(obj):
+            try:
+                return obj.format_map(_SafeDict(context))
+            except Exception:
+                return obj
+        return obj
+    return obj
+
+def _expand_and_join_base_dirs(config: dict) -> dict:
+    """
+    Post-process a few known path sections:
+    - expand '~' in any string under 'saliency_script'
+    - if 'base_dir' + '<folder-like key>' appear, join them to a full path
+    """
+    cfg = deepcopy(config)
+    ss = cfg.get("saliency_script", {})
+    base_dir = ss.get("base_dir")
+    if isinstance(base_dir, str):
+        base_dir = os.path.expanduser(base_dir)
+        ss["base_dir"] = base_dir
+        for section_key in ("saliency", "distinctiveness"):
+            sec = ss.get(section_key, {})
+            for k, v in list(sec.items()):
+                if isinstance(v, str) and (k.endswith("_folder") or "folder" in k or "dir" in k):
+                    if not os.path.isabs(v):
+                        sec[k] = os.path.join(base_dir, v)
+            ss[section_key] = sec
+        cfg["saliency_script"] = ss
+    return cfg
+
+
 #---------------------------------------------------
 # ************* Generate Saliency maps *************
 #---------------------------------------------------
 def get_target_layer(model:torch.nn.Module, layer_name:str=None, method:str='gradcam')->torch.nn.Conv2d:
     """
-    Retrieve the target convolutional layer for Grad-CAM.
-    Args:
-        model (torch.nn.Module): Input model for which the specific layer shall be retrieved.
-        layer (str, optional): The layer which shall be retrieved. By default -1 to fit DenseNet121.
-        method (str, optional): The saliency method applied to access the relevant layer. By default GradCAM -> Last conv layer
-    Return:
-        Specified layer of model for saliency method.
+    Resolve the target layer for attribution (defaults to last Conv2d).
+
+    Parameters
+    ----------
+    model : torch.nn.Module Backbone in eval() mode.
+    layer_name : str | None Explicit attribute name to fetch; if not found, auto-detect.
+    method : {"gradcam","lrp","ig","deeplift"} Used for potential method-specific selection.
+
+    Returns
+    -------
+    torch.nn.Module Target layer module (typically a conv layer).
+
+    Raises
+    ------
+    ValueError
+        If no convolutional layer could be located.
     """
     # If specific layer name (str) is provided, try to retrieve:
     if layer_name:
@@ -60,10 +199,10 @@ def get_target_layer(model:torch.nn.Module, layer_name:str=None, method:str='gra
         if isinstance(module, torch.nn.Conv2d):
             target_layer = module
             # Section for first conv layer with ResNet152 and LRP
-            # if model.__class__.__name__ == 'ResNet121' and method=='lrp':
-            #     print(f"Idx when returning layer for LRP: {idx}")
-            #     print("Recognized Resnet")
-            #     return target_layer
+            if model.__class__.__name__ == 'ResNet121' and method=='lrp':
+                print(f"Idx when returning layer for LRP: {idx}")
+                print("Recognized Resnet")
+                return target_layer
     if target_layer is None:
         raise ValueError("Could not find a convolutional layer in the model.")
     return target_layer
@@ -128,7 +267,6 @@ def generate_lrp_attribution(model:torch.nn.Module,
     # Aggregate across channels if needed
     if attr.ndim == 3:
         attr = attr.mean(axis=0)
-
     return attr
 
 def ig_heatmap(model:torch.nn.Module,
@@ -179,20 +317,20 @@ def process_heatmap(heatmap: np.ndarray,
                     flatten: bool = False,
                     as_tensor: bool = False) -> np.ndarray:
     """
-    Resize and normalize a 2D heatmap.
+    Resize & normalize a saliency map with optional flattening.
 
-    Args:
-        heatmap (np.ndarray): 2D saliency map (e.g., 10x10 from a convolutional layer).
-        target_size (tuple): Target (height, width) for upscaling using bilinear interpolation.
-        saliency_method (str): Saliency method used. If 'deeplift', sign is preserved and L2 normalization is enforced.
-        normalize (str): 'maxmin' for min-max scaling to [0, 1]; 'l2' for unit L2 norm.
-                         Ignored and set to 'l2' if saliency_method == 'deeplift'.
-        flatten (bool): Whether to flatten the final output into a 1D vector.
-        as_tensor (bool): Whether to return the result as a PyTorch tensor (default: False → return NumPy array).
+    Parameters
+    ----------
+    heatmap : np.ndarray 2D saliency map.
+    target_size : tuple[int,int] Output spatial size (H, W) for interpolation.
+    saliency_method : {"gradcam","deeplift","ig","lrp"} Forces 'l2' normalization for signed methods.
+    normalize : {"maxmin","l2"} Scaling scheme; 'maxmin' clips to [0,1], 'l2' makes unit-norm vector.
+    flatten : bool If True, return a 1D vector.
+    as_tensor : bool If True, return a torch.Tensor; else np.ndarray.
 
-    Returns:
-        np.ndarray or torch.Tensor: Normalized heatmap, resized and optionally flattened.
-                                    Returns None if normalization fails (e.g. uniform heatmap for maxmin).
+    Returns
+    -------
+    np.ndarray | torch.Tensor | None Processed heatmap or None if normalization is ill-posed.
     """
     tolerance = 1e-6
     if saliency_method in ('deeplift', 'ig', 'lrp'):
@@ -576,6 +714,17 @@ def extract_study_id(mode):
 
     else:
         raise ValueError("Expected either 'val' or 'test' mode, but got something else.")
+
+
+def _coerce_bool(x):
+    """Robustly coerce config values into a boolean."""
+    if isinstance(x, bool):
+        return x
+    if isinstance(x, (int, float)):
+        return bool(x)
+    if isinstance(x, str):
+        return x.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+    return False
 
 
 def compute_accuracy(predictions, labels):

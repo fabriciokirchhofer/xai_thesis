@@ -7,6 +7,34 @@ from ensemble import evaluator
 from third_party.run_models import DEVICE
 
 class ModelEnsemble:
+    """
+    Convenience wrapper to combine multiple models with a chosen strategy.
+
+    Parameters
+    ----------
+    models : list
+        A list of wrappers exposing `.predict()` and `.prepare_data_loader()`.
+    strategy : str
+        One of {'average','average_voting','distinctiveness_weighted',
+                'distinctiveness_voting'}.
+    **strategy_params
+        Additional knobs for the strategy (e.g., tasks, distinctiveness files,
+        config_weights, normalize_distinctiveness_by).
+
+    Attributes
+    ----------
+    tasks : list[str]
+        Task names for columns alignment and thresholding.
+    strategy_fn : callable
+        The combination function returned by StrategyFactory.
+
+    Methods
+    -------
+    predict_batch(images)
+        Run ensemble on a single batch of images (Tensor), return np.ndarray.
+    predict_loader(data_loader)
+        Run ensemble across a DataLoader, return (preds, targets) as np.ndarrays.
+    """
     def __init__(self, models, strategy='average', **strategy_params):
         self.models = models
         self.tasks = strategy_params.pop('tasks', None) or StrategyFactory.TASKS
@@ -45,6 +73,18 @@ def _mean_dist(preds_list):
     return np.sum(arr * weights, axis=-1)   
 
 class StrategyFactory:
+    """
+    Factory for ensemble strategies.
+
+    Methods
+    -------
+    get_strategy(name, **params)
+        Return a function that merges model outputs according to strategy.
+        The returned function typically accepts:
+            - preds: list[Tensor/ndarray] or Tensor of shape (M, N, C)
+            - all_targets: optional GT (unused in most strategies)
+            - a_val, b_val: hyperparameters for weight scaling/sharpening
+    """
     TASKS = ["No Finding", "Enlarged Cardiomediastinum", "Cardiomegaly", "Lung Opacity",
      "Lung Lesion", "Edema","Consolidation", "Pneumonia", "Atelectasis", "Pneumothorax",
     "Pleural Effusion", "Pleural Other", "Fracture", "Support Devices"]
@@ -57,6 +97,18 @@ class StrategyFactory:
         # Simple average of probabilities
         if name == 'average':
             def avg_fn(preds, all_targets=None, a_val=None, b_val=None):
+                """
+                Simple arithmetic mean over models (probabilities).
+
+                Parameters
+                ----------
+                preds : list[Tensor|ndarray] or Tensor
+                    Model probabilities shaped (N, C), stacked along model axis.
+                Returns
+                -------
+                np.ndarray
+                    Mean probability per sample and class, shape (N, C).
+                """
                 # preds: list of tensors or numpy arrays, or tensor
                 if isinstance(preds, list):
                     # if torch tensors, stack directly
@@ -80,7 +132,14 @@ class StrategyFactory:
             """
 
             def av_soft(preds, all_targets, a_val=None, b_val=None):
+                """
+                Average-voting: mean of per-model probabilities; threshold later.
 
+                Returns
+                -------
+                np.ndarray
+                    Averaged probabilities, shape (N, C).
+                """
                 avg_votes = np.mean(preds, axis=0)
                 #avg_votes = 1/((avg_votes - avg_votes.min()) / (avg_votes.max()-avg_votes.min() + 1e-6) + 1e-6) # Invert for ablation study
 
@@ -156,13 +215,35 @@ class StrategyFactory:
                 print(f"Normalization mode: per task (columns). Weight matrix shape: {weight_matrix.shape}")           
             else:
                 raise ValueError (f"No valid distinctiveness normalization mode selected. Mode must be either  'model' or 'task'. Received {mode}")           
-   
+            
+            # Sanity-check: no NaN/Inf after normalization
+            if not np.isfinite(weight_matrix).all():
+                raise ValueError("Non-finite values detected in normalized distinctiveness weights.")
             #weight_matrix = 1 / weight_matrix # Inversion for ablation trial
             print(f"Weight matrix after normalizaiton: {weight_matrix}")
             
 
             # Ensemble function using the computed weights
             def distinctiveness_fn(preds, all_targets=None, a_val=None, b_val=None):
+                """
+                Distinctiveness-weighted probabilities.
+
+                Mechanics
+                ---------
+                - Build weight_matrix (M x C) from distinctiveness files or 'Weights' in
+                config_weights JSON; normalize per 'normalize_distinctiveness_by'.
+                - Apply sharpening (w ** b_val) and scaling (a_val).
+                - Combine: Σ_m (a * w_mc^b * p_m), per class c.
+
+                Returns
+                -------
+                np.ndarray
+                    Combined probabilities, shape (N, C).
+
+                Notes
+                -----
+                - Exposes `.weight_matrix` for downstream saving/inspection.
+                """
                 # Convert predictions list/tensor to a NumPy array of shape (M, N, C)
                 if isinstance(preds, list):
                     if torch.is_tensor(preds[0]):
@@ -183,8 +264,8 @@ class StrategyFactory:
                 #weighted_sum = weighted_sum-np.min(weighted_sum, axis=1, keepdims=True) / (np.max(weighted_sum, axis=1, keepdims=True)-np.min(weighted_sum, axis=1, keepdims=True) + 1e-8)
                 return weighted_sum  # shape: (N, C) NumPy array            
             # make it accessible
-            distinctiveness_fn.weight_matrix = weight_matrix 
-            distinctiveness_fn.weighted_sum = weight_matrix
+            distinctiveness_fn.weight_matrix = weight_matrix.copy() 
+            distinctiveness_fn.weighted_sum = weight_matrix.copy()
             return distinctiveness_fn
        
        
@@ -258,7 +339,10 @@ class StrategyFactory:
                 print(f"Normalization mode: per task (columns). Weight matrix shape: {weight_matrix.shape}")           
             else:
                 raise ValueError (f"No valid distinctiveness normalization mode selected. Mode must be either  'model' or 'task'. Received {mode}")           
-   
+
+            # Sanity-check: no NaN/Inf after normalization
+            if not np.isfinite(weight_matrix).all():
+                raise ValueError("Non-finite values detected in normalized distinctiveness weights.")
             #weight_matrix = 1 / weight_matrix # Inversion for ablation trial
             print(f"Weight matrix after normalizaiton: {weight_matrix}")
 
@@ -268,6 +352,23 @@ class StrategyFactory:
             metric = tune_cfg.get('metric', 'f1')
 
             def dv_soft(preds, all_targets, a_val=None, b_val=None):
+                """
+                Distinctiveness-weighted voting fraction.
+
+                Expectations
+                ------------
+                - `preds` are binary votes per model (0/1) for each class (N, C).
+                - Weights: use normalized distinctiveness per model/class, sharpen via b_val.
+
+                Returns
+                -------
+                np.ndarray
+                    Weighted vote fraction (N, C), to be thresholded later.
+
+                Notes
+                -----
+                - Exposes `.weight_matrix` for downstream saving/inspection.
+                """
                 adjusted_weights = a_val * (weight_matrix**b_val)
                 # Compute weighted vote fractions
                 # weight_matrix: (M, C) -> expand to (M, 1, C)

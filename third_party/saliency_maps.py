@@ -33,12 +33,18 @@ args.batch_size = 1
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "/home/fkirchhofer/repo/xai_thesis/config.json")
 with open(CONFIG_PATH, "r") as f:
     config = json.load(f)
+_ctx = utils._flatten_context(config)
+
+# 2) Expand placeholders everywhere they appear
+config = utils._expand_placeholders(config, _ctx)
+
+# 3) Normalize saliency paths: expand ~ and join base_dir with folder names
+config = utils._expand_and_join_base_dirs(config)
 saliency_cfg = config.get("saliency_script", {})
 
 # Helper to expand "~" in all paths
 def expand(p):
     return os.path.expanduser(p)
-
 # Base directory
 base_dir = expand(saliency_cfg.get("base_dir", "~/repo/xai_thesis"))
 
@@ -48,6 +54,13 @@ method = sal_cfg.get("method", "gradcam").lower()
 map_folder       = sal_cfg.get("map_folder", "saliency_maps")
 cache_folder     = sal_cfg.get("cache_folder", "heatmap_cache")
 manual_folder_name    = sal_cfg.get("manifold_name", "ckpt_i_ignore_1")
+
+
+eval_cfg = config.get("evaluation")
+if "evaluate_test_set" in eval_cfg:
+    args.run_test = utils._coerce_bool(eval_cfg["evaluate_test_set"])
+    print(f"[INFO] Overriding args_model.run_test -> {args.run_test} "
+        f"(from config['evaluation']['evaluate_test_set'])")
 
 baseline_tensor = None
 if method in ("ig", "deeplift"):
@@ -86,6 +99,26 @@ def load_model(model_name:str='DenseNet121', tasks:list=None, model_args=None)->
 
 
 def main():
+    """
+    Generate (or fetch) saliency maps and (optionally) distinctiveness JSONs.
+
+    Workflow
+    --------
+    1) Parse saliency config (method, folders, baseline for IG/DeepLIFT).
+    2) Load model & target layer, prepare DataLoader (val or test).
+    3) For each sample and target class (5 CheXpert eval classes), either:
+       - 'compute': compute heatmap and cache (*.npz),
+       - 'get'    : load heatmap from cache (fallback: compute),
+       - 'save_img': compute/load and save overlay images.
+    4) (Optional) Aggregate per-class heatmaps into a class-wise distinctiveness
+       measure and write per-model JSON.
+
+    Side Effects
+    ------------
+    - Writes heatmaps (*.npz) under cache folder.
+    - Optionally writes PNG overlays.
+    - Optionally writes class-wise distinctiveness JSONs per model.
+    """
     print("\n************************ Get started with saliency maps script ************************")
     
     # Some general definitions
@@ -123,7 +156,6 @@ def main():
     # Access the patient IDs when storing saliency maps (heatmap overlay with original iamge)
     df = utils.extract_study_id(mode=args.run_test)
     ids = df['study_id'].str.split('/', expand=True)[1] 
-
     
     #torch.cuda.empty_cache()
 
@@ -162,7 +194,7 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer,
-                            baseline=baseline_tensor) # Switch to None to set zero_baseline or baseline_tensor
+                            baseline=None) # Switch to None to set zero_baseline or baseline_tensor
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
                         heatmap = utils.deep_lift_layer_heatmap(
@@ -170,7 +202,7 @@ def main():
                             layer=layer,
                             input_tensor=img,
                             target_class=idx,
-                            baseline=baseline_tensor) # Switch to None to set zero_baseline or baseline_tensor
+                            baseline=None) # Switch to None to set zero_baseline or baseline_tensor
                         np.savez_compressed(cache_map_path, heatmap=heatmap)  
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -206,7 +238,7 @@ def main():
                             input_tensor=img,
                             target_class=idx,
                             target_layer=layer,
-                            baseline=baseline_tensor) # Switch to None to set zero_baseline or baseline_tensor
+                            baseline=None) # Switch to None to set zero_baseline or baseline_tensor
                         np.savez_compressed(cache_map_path, heatmap=heatmap)
                     elif method == "deeplift":
                         heatmap = utils.deep_lift_layer_heatmap(
@@ -214,7 +246,7 @@ def main():
                             layer=layer,
                             input_tensor=img,
                             target_class=idx,
-                            baseline=baseline_tensor) # Switch to None to set zero_baseline or baseline_tensor
+                            baseline=None) # Switch to None to set zero_baseline or baseline_tensor
                         np.savez_compressed(cache_map_path, heatmap=heatmap)   
                     else:
                         raise ValueError(f"Unknown saliency method: {method}")
@@ -235,10 +267,18 @@ def main():
                     print("Heatmap not existing. Make sure it is available in correct location.")
             else:
                 raise ValueError(f"Unknown saliency map processing mode: {args.saliency}")
-            heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
-                                      target_size=(640, 640), #  1280, 1280
-                                      saliency_method=method, 
-                                      flatten=True)
+            heatmap_scaling = sal_cfg.get("heatmap_scaling") #heatmap.shape # 320,320 or 640,640 or 1280,1280 or heatmap.shape
+            if heatmap_scaling == "original":
+                heatmap_scaling = heatmap.shape
+                heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
+                        target_size=heatmap_scaling, 
+                        saliency_method=method, 
+                        flatten=True)
+            else:
+                heatmap_vector = utils.process_heatmap(heatmap=heatmap, 
+                                    target_size=((int(heatmap_scaling),int(heatmap_scaling))), 
+                                    saliency_method=method, 
+                                    flatten=True)
             
             # Every round append the heatmap_vector to the corresponding target_name (phathology)
             saliency_dict[target_name].append(heatmap_vector)
@@ -247,7 +287,7 @@ def main():
         distinctiveness_collection = utils.sum_up_distinctiveness(
                                             collection=distinctiveness_collection,
                                             new_scores=distinctiveness)
-    
+    print(f"CHECK - {heatmap_scaling} heatmap scaling used for distinctiveness computation")
     save_dir = os.path.join(base_dir, dist_output_root, args.model)
     os.makedirs(save_dir, exist_ok=True)
 

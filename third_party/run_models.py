@@ -66,7 +66,7 @@ def create_parser():
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
     parser.add_argument('--tune_thresholds', type=bool, default=True, help='If True, find optimal per-class thresholds using F1 score. Will save it.')
     parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')
-    parser.add_argument('--run_test', type=bool, default=True, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
+    parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
     parser.add_argument('--saliency', type=str, default='compute', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
@@ -79,15 +79,26 @@ def parse_arguments():
 
 def get_model(model:str, tasks:list, model_args):
     """
-    Factory to return an XAI model by name.
-    Args:
-        model_name (str): Name of the model architecture.
-        tasks (list):     List of target class names.
-        model_args: Parsed arguments namespace.
-    Returns:
-        An instance of the requested BaseModelXAI subclass.
-    Raises:
-        ValueError: If `model_name` is not recognized.
+    Factory: return an instantiated classification model wrapper.
+
+    Parameters
+    ----------
+    model : {"DenseNet121","ResNet152","Inceptionv4"}
+        Name of the backbone architecture.
+    tasks : list[str]
+        Ordered list of class names; defines output dimensionality.
+    model_args : argparse.Namespace
+        Arguments controlling input size, checkpoint path, device, etc.
+
+    Returns
+    -------
+    torch.nn.Module
+        Model in eval() mode with proper head for 'tasks' and device set.
+
+    Raises
+    ------
+    ValueError
+        If an unknown model name is provided.
     """
     # Mapping to choose the right model class
     model_map = {
@@ -110,6 +121,26 @@ def get_model(model:str, tasks:list, model_args):
 
 # Load checkpoint and its parameters - original one
 def load_checkpoint(model, checkpoint_path):
+    """
+    Load a PyTorch Lightning or raw state_dict checkpoint into a model.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Initialized model instance.
+    checkpoint_path : str
+        Path to checkpoint (.ckpt or .pth). If PL-style, expects 'state_dict'.
+
+    Returns
+    -------
+    torch.nn.Module
+        Model with loaded weights and eval() set.
+
+    Notes
+    -----
+    - Removes 'model.' prefix from keys (Lightning convention).
+    - Uses DEVICE determined at import from config.
+    """
     ckpt = torch.load(checkpoint_path, map_location=DEVICE)
     state_dict = ckpt.get('state_dict', ckpt)
     state_dict = utils.remove_prefix(state_dict, "model.")
@@ -120,7 +151,25 @@ def load_checkpoint(model, checkpoint_path):
 
 # Prep dataset
 def prepare_data(model_args):
+    """
+    Build the evaluation DataLoader (validation or test) with transforms.
 
+    Parameters
+    ----------
+    model_args : argparse.Namespace
+        Must include `run_test` (bool), batch size, and other dataset knobs.
+
+    Returns
+    -------
+    torch.utils.data.DataLoader
+        Loader yielding (image, labels) pairs; normalization and resizing
+        are applied consistently across architectures.
+
+    Notes
+    -----
+    - Paths to CheXpert CSVs are expected at fixed locations; adjust if needed.
+    - Normalization assumes train statistics for the selected backbone.
+    """
     train_mean = torch.tensor([0.5032, 0.5032, 0.5032])
     train_std = torch.tensor([0.2919, 0.2919, 0.2919])
     size = (320, 320)

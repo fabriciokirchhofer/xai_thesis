@@ -16,16 +16,23 @@ def evaluate_metrics(predictions: np.ndarray,
                      evaluation_sub_tasks: list = None,
                      tasks:list=None) -> dict:
     """
-    Compute evaluation metrics for model or ensemble outputs.
-    Args:
-        predictions (np.ndarray): Array of shape (N, C) with raw logits (if use_logits=True) or probabilities.
-        binary_preds (np.ndarray): Array of shape (N, C) containing final binary predictions (0/1).
-        targets (np.ndarray): Array of shape (N, C) with ground-truth binary labels.
-        use_logits (bool): Whether `predictions` are raw logits (will apply sigmoid internally).
-        metrics (list): Metrics to compute: any of 'AUROC', 'F1', 'Youden'.
-        average_auroc_classes (list): Optional list of class indices over which to average AUROC.
-    Returns:
-        dict: Contains per-class scores and any requested summary statistics.
+    Compute per-class and subset metrics for model/ensemble outputs.
+
+    Parameters
+    ----------
+    predictions : (N, C) np.ndarray Raw logits (if use_logits=True) or probabilities [0,1].
+    binary_preds : (N, C) np.ndarray Final 0/1 predictions after thresholding.
+    targets : (N, C) np.ndarray Ground-truth binary labels.
+    use_logits : bool If True, apply sigmoid to `predictions` before AUROC.
+    metrics : list[str] Any of {'AUROC','F1','Youden','Accuracy'}; order is ignored.
+    evaluation_sub_tasks : list[str] | None Optional subset of class names for averaged summaries (_subset_mean).
+    tasks : list[str] All class names; defines column order in arrays.
+
+    Returns
+    -------
+    dict
+        Mapping with keys for each requested metric (per-class dicts) and
+        optional subset means (e.g. 'F1_subset_mean').
     """
     results = {}
     # Convert logits to probabilities if needed    
@@ -121,17 +128,24 @@ def evaluate_metrics(predictions: np.ndarray,
 
 def find_optimal_thresholds(probabilities, ground_truth, tasks, step=0.01, metric="f1"):
     """
-    Finds optimal threshold for each class based on maximizing the F1 score.
+    Search of per-class thresholds to maximize a metric.
 
-    Args:
-        probabilities (numpy array): Array of shape (n_samples, n_classes) containing probabilities.
-        ground_truth (numpy array): Array of shape (n_samples, n_classes) with true binary labels.
-        tasks (list of str): List of class names.
-        step (float): Step size for threshold search.
+    Parameters
+    ----------
+    probabilities : (N, C) np.ndarray Class probabilities.
+    ground_truth : (N, C) np.ndarray Binary labels.
+    tasks : list[str] Class names in column order.
+    step : float Threshold increment in [0,1]; total ~1/step trials per class.
+    metric : {"f1","youden"} Objective to maximize.
 
-    Returns:
-        optimal_thresholds (dict): Mapping from task to optimal threshold.
-        metric_score_dict (dict): Mapping from task to the achieved score ().
+    Returns
+    -------
+    optimal_thresholds : dict[str, float] Best threshold per class name.
+    metric_score_dict : dict[str, float] Achieved metric value at the best threshold per class.
+
+    Notes
+    -----
+    - For large N, consider a quantile/grid reduction to speed up.
     """
     optimal_thresholds = {}
     metric_score_dict = {}

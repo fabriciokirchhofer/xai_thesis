@@ -28,6 +28,41 @@ from ensemble import evaluator, model_classes
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 def main():
+    """
+    Optimize per-class ensemble weights (and optionally thresholds) with Optuna.
+
+    Workflow
+    --------
+    1) Load config (models, ensemble strategy, threshold tuning, evaluation subset).
+    2) Build model wrappers and collect per-model predictions on validation or test.
+    3) For each eval class, run an Optuna study to find a weight vector (one weight per model),
+       optionally normalizing weights (sum to 1) unless --no-normalize is given.
+    4) Inside the objective, compute the ensemble output (weighted sum for probabilities or
+       weighted vote fraction for voting), reduce to per-study probabilities (max per view),
+       apply thresholds (pre: tuned per trial, otherwise default 0.5), and return the F1.
+    5) After optimization, (re)compute ensemble with best weights and find final class-wise
+       thresholds (when applicable). Save JSON with Weights, Thresholds, and F1 scores.
+
+    Notes
+    -----
+    - Shapes:
+        model_probs_arr: (M_models, N_samples, C_tasks)
+        eval_indices: list[int] mapping evaluation_sub_tasks -> indices in full 14 tasks
+    - Study objective maximizes F1 on the selected class.
+    - Thresholds for 'stage="none"' default to 0.5 inside the objective for safety.
+
+    Side Effects
+    ------------
+    - Writes an output JSON file containing "Weights", "Thresholds", and "F1_scores".
+
+    CLI
+    ---
+    --config: path to config.json
+    --output: output JSON path
+    --no-normalize: disable per-class weight normalization
+    --trials: trials per class (default 300)
+    """
+
     import argparse
     parser = argparse.ArgumentParser(description="Optimize ensemble weight matrix (and thresholds).")
     
@@ -197,10 +232,6 @@ def main():
                     # Threshold tuning per model
                     thresholds_by_model = None
                     if tune_cfg.get("stage", "pre") == "pre":
-                        # print(">>> performing PRE‑ensemble threshold tuning per model")
-                        # thresholds_by_model = []
-                        # y_m = all_gt_labels[:, eval_indices]
-
                         thresholds_by_model_dict, _ = evaluator.find_optimal_thresholds(
                             probabilities=model_max_probs,
                             ground_truth=gt_model,
@@ -227,7 +258,9 @@ def main():
                         ground_truth=gt_view,
                         tasks=[cls],
                         metric=tune_cfg.get("metric", "f1"))
-                t = float(thr_dict[cls])
+                    t = float(thr_dict[cls])              
+                else:
+                    t = 0.5                
                 preds = (soft_vote >= t).astype(int)
                 #y_true = subset_gt_labels[:, eval_indices[idx]].astype(int)
                 return evaluator.f1_score(gt_view.ravel().astype(int), preds, zero_division=0) # subset_gt_labels / gt_view.ravel().astype(int)

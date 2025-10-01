@@ -12,22 +12,66 @@ from ensemble import evaluator
 from ensemble import model_classes  # factory for BaseModelXAI wrappers
 
 def main():
+    """
+    Run an end-to-end ensemble evaluation (optionally with (a,b) grid search).
+
+    Workflow
+    --------
+    1) Parse config & create a timestamped results directory (copy config for repro).
+    2) Instantiate model wrappers; get per-model logits/probabilities on val/test.
+    3) Build the requested ensemble strategy (average, average_voting,
+       distinctiveness_weighted, distinctiveness_voting), injecting task names,
+       model names, distinctiveness weights or optuna weights if present.
+    4) (Optional) Grid search over (a,b) hyperparameters controlling weight sharpening
+       and global scaling; aggregate per-study probabilities (max-per-view).
+    5) Threshold logic:
+       - 'pre'  : find per-model thresholds (for voting) and final ensemble thresholds.
+       - 'none' : load thresholds from files (if provided) or use 0.5 defaults.
+    6) Compute final binary predictions and metrics (AUROC, F1, Youden, Accuracy).
+    7) Save artifacts (f1 grid, thresholds, labels, weight matrix if exposed, plots).
+
+    Inputs
+    ------
+    config.json:
+        - models[*]: architecture, checkpoint, overrides (e.g., batch_size)
+        - ensemble : strategy, normalize_distinctiveness_by, threshold_tuning
+        - evaluation: evaluate_test_set, use_logits (optional)
+        - grid_search: perform_grid_search, grid_val_a/b, step_size
+
+    Notes
+    -----
+    - Shapes:
+        per-model outputs : (N_samples, C_tasks)
+        stacked preds     : list[Tensor] or np.ndarray, converted inside strategies
+    - Patient-level aggregation uses utils.get_max_prob_per_view.
+    - If grid search is enabled, reported metrics are recomputed at best (a,b).
+
+    Side Effects
+    ------------
+    - Writes artifacts under results/<experiment_name>_<timestamp>_.../
+    """
+
     print("******************** Get run_experiments.py started ********************")
     local_time_zone = datetime.timezone(datetime.timedelta(hours=2), name="CEST")
     start = datetime.datetime.now(local_time_zone)
 
     parent_parser = run_models.create_parser()
-    parent_parser.add_argument(
-        '--config',
-        type=str,
+    parent_parser.add_argument('--config', type=str,
         default='/home/fkirchhofer/repo/xai_thesis/config.json', # TODO: For some reason I can not pass it in the terminal. It seems unrecognized. Why?
-        help='Path to JSON config file'
-    )
+        help='Path to JSON config file')    
     args = parent_parser.parse_args()
 
     # Load experiment configuration
     with open(args.config, 'r', encoding='utf-8') as f:
         config = json.load(f)
+    # 1) Build a flat context (e.g., {'method': 'LRP'})
+    _ctx = utils._flatten_context(config)
+
+    # 2) Expand placeholders everywhere they appear
+    config = utils._expand_placeholders(config, _ctx)
+
+    # 3) Normalize saliency paths: expand ~ and join base_dir with folder names
+    config = utils._expand_and_join_base_dirs(config)
 
     # Set up timestamped results directory and copy the config there for reproducibility
     output_cfg = config.get('output', {})
@@ -71,6 +115,13 @@ def main():
         # Instantiating the model loads weights and sets eval mode
         model_obj = ModelWrapper(tasks=tasks, model_args=args_model)
         models.append(model_obj)
+
+    # Safety override: ensure --run_test matches config["evaluation"]["evaluate_test_set"]
+    eval_cfg = config.get("evaluation", {})
+    if "evaluate_test_set" in eval_cfg:
+        args_model.run_test = utils._coerce_bool(eval_cfg["evaluate_test_set"])
+        print(f"[INFO] Overriding args_model.run_test -> {args_model.run_test} "
+            f"(from config['evaluation']['evaluate_test_set'])")
 
     model_probs_list = []
     use_test = config["evaluation"].get("evaluate_test_set", False) # alternative without default value config["evaluation"]["evaluate_test_set"]
@@ -256,7 +307,7 @@ def main():
                 per_model_thresholds_path = ensemble_cfg.get("per_model_voting_thresholds_path", None)
                 if per_model_thresholds_path and per_model_thresholds_path.lower() != "tbd" and os.path.exists(ensemble_cfg.get('per_model_voting_thresholds_path')):
                     per_model_thresholds = np.load(ensemble_cfg.get('per_model_voting_thresholds_path'), allow_pickle=True)
-                    print(f"Per model thresholds from validation run: {per_model_thresholds}")
+                    print(f"\nPer model thresholds from validation run:\n{per_model_thresholds}")
 
         # Optuna patch - END
         else: 
@@ -296,8 +347,8 @@ def main():
 
         # Try to load thresholds for the voting fraction from npy file
         if ens_thresholds is None and ens_thresholds_path.lower() != "tbd" and os.path.exists(ens_thresholds_path):
-            print("Load precomputed ensemble thresholds for the voting fraction (npy).")
             ens_thresholds = np.load(ens_thresholds_path, allow_pickle=True).item()
+            print(f"\nLoaded precomputed ensemble thresholds for the voting fraction (npy).\n {ens_thresholds}")
 
         for i, a in enumerate(grid_vals_a):
             for j, b in enumerate(grid_vals_b):
@@ -336,7 +387,6 @@ def main():
 
     # ****************** Voting structure ends ******************
 
-    eval_cfg = config.get('evaluation', {})
     results = evaluator.evaluate_metrics(
         predictions=ensemble_probs,
         binary_preds=pred_ensemble_labels,
@@ -345,6 +395,7 @@ def main():
         metrics=eval_cfg.get('metrics', ['AUROC']),
         evaluation_sub_tasks=eval_cfg.get('evaluation_sub_tasks', eval_tasks),
         tasks=tasks) 
+    print(f"CHECK - Evaluation completed with ensemble probs shape: {ensemble_probs.shape} in mode: {args_model.run_test}")
 
     if do_grid_search:
         print(f"Final f1_grid: {f1_grid}")
@@ -449,7 +500,6 @@ def main():
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
     print(f"Elapsed time: {hours}h {minutes}m {seconds}s")
-
 
 
 if __name__ == '__main__':

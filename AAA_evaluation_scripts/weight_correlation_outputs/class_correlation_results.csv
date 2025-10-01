@@ -1,0 +1,6 @@
+Class,Pearson,Spearman
+Atelectasis,0.789,0.7
+Cardiomegaly,-0.0,0.0
+Consolidation,-0.176,-0.1
+Edema,-0.509,-0.7
+Pleural Effusion,-0.807,-0.7
