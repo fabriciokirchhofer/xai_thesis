@@ -88,16 +88,16 @@
       "method": "DeepLift",
       "heatmap_scaling":"original",
       "map_folder": "saliency_maps_{method}_TEMP_TO_OVERRIDE",
-      "cache_folder": "heatmap_cache_{method}_{stage}_{heatmap_scaling}_no_baseline_09.10.2025",
+      "cache_folder": "heatmap_cache_{method}_{stage}_{heatmap_scaling}_no_baseline_06.10.2025",
       "manifold_name": "ckpt_d_ignore_1"},
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity_{method}_{stage}_{heatmap_scaling}_no_baseline_09.10.2025"
+      "output_folder": "distinctiveness_cos_similarity_{method}_{stage}_{heatmap_scaling}_no_baseline_06.10.2025"
     }
   },
 
   "output": {
-    "results_dir": "ensemble_{method}_{heatmap_scaling}_no_baseline_09.10.2025",
+    "results_dir": "ensemble_{method}_{heatmap_scaling}_no_baseline_06.10.2025",
     "experiment_name": "001_{strategy}_{stage}_5m",
     "plot_models_analysis": true
   }
