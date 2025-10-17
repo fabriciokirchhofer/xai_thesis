@@ -1,0 +1,3 @@
+Comparison,Δ mean,95% CI,t,p (two-sided t-test),Cohen d
+DW – AW (macro-F1),0.0170,0.0053 – 0.0294,85.675,<0.001,2.709
+DV – AV (macro-F1),0.0004,-0.0061 – 0.0068,3.435,<0.001,0.109

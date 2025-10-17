@@ -50,7 +50,7 @@
   ],
 
   "ensemble": {
-    "strategy": "average_voting",
+    "strategy": "distinctiveness_voting",
     "normalize_distinctiveness_by": "task",
     "threshold_tuning": {
       "stage": "none",
@@ -85,14 +85,14 @@
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "BASELINE",
+      "method": "DeepLift",
       "heatmap_scaling":"original",
       "map_folder": "saliency_maps_{method}_TEMP_TO_OVERRIDE",
-      "cache_folder": "heatmap_cache_{method}_{stage}_{heatmap_scaling}_16.10.2025",
+      "cache_folder": "heatmap_cache_{method}_{stage}_{heatmap_scaling}_no_baseline_29.09.2025",
       "manifold_name": "ckpt_d_ignore_1"},
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity_{method}_{stage}_{heatmap_scaling}_16.10.2025"
+      "output_folder": "distinctiveness_cos_similarity_{method}_{stage}_{heatmap_scaling}_no_baseline_29.09.2025"
     }
   },
 

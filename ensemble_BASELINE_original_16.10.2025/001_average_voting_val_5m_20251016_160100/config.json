@@ -53,10 +53,10 @@
     "strategy": "average_voting",
     "normalize_distinctiveness_by": "task",
     "threshold_tuning": {
-      "stage": "none",
+      "stage": "pre",
       "metric": "f1"},
-    "thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_voting_val_5m_20251016_154621/thresholds.npy",
-    "per_model_voting_thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_voting_val_5m_20251016_154621/per_model_voting_thresholds.npy",
+    "thresholds_path": "tbd",
+    "per_model_voting_thresholds_path": "tbd",
     "distinctiveness_files": [
       "/home/fkirchhofer/repo/xai_thesis/{output_folder}/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
       "/home/fkirchhofer/repo/xai_thesis/{output_folder}/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
@@ -71,7 +71,7 @@
     "metrics": ["AUROC", "F1", "Youden", "Accuracy"],
     "evaluation_sub_tasks": ["Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Pleural Effusion"],
     "use_logits": false,
-    "evaluate_test_set": true,
+    "evaluate_test_set": false,
     "umap_metric": "cosine"
   },
 

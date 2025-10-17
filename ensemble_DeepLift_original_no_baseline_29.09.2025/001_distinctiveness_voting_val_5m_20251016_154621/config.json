@@ -50,13 +50,13 @@
   ],
 
   "ensemble": {
-    "strategy": "average_voting",
+    "strategy": "distinctiveness_voting",
     "normalize_distinctiveness_by": "task",
     "threshold_tuning": {
-      "stage": "none",
+      "stage": "pre",
       "metric": "f1"},
-    "thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_voting_val_5m_20251016_154621/thresholds.npy",
-    "per_model_voting_thresholds_path": "/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_voting_val_5m_20251016_154621/per_model_voting_thresholds.npy",
+    "thresholds_path": "tbd",
+    "per_model_voting_thresholds_path": "tbd",
     "distinctiveness_files": [
       "/home/fkirchhofer/repo/xai_thesis/{output_folder}/DenseNet121/ckpt_d_ignore_1_class_wise_distinctiveness.json",
       "/home/fkirchhofer/repo/xai_thesis/{output_folder}/DenseNet121/ckpt_d_ignore_2_class_wise_distinctiveness.json",
@@ -71,7 +71,7 @@
     "metrics": ["AUROC", "F1", "Youden", "Accuracy"],
     "evaluation_sub_tasks": ["Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Pleural Effusion"],
     "use_logits": false,
-    "evaluate_test_set": true,
+    "evaluate_test_set": false,
     "umap_metric": "cosine"
   },
 
@@ -85,14 +85,14 @@
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "BASELINE",
+      "method": "DeepLift",
       "heatmap_scaling":"original",
       "map_folder": "saliency_maps_{method}_TEMP_TO_OVERRIDE",
-      "cache_folder": "heatmap_cache_{method}_{stage}_{heatmap_scaling}_16.10.2025",
+      "cache_folder": "heatmap_cache_{method}_{stage}_{heatmap_scaling}_no_baseline_29.09.2025",
       "manifold_name": "ckpt_d_ignore_1"},
     "distinctiveness":{
       "function": "cosine_similarity",
-      "output_folder": "distinctiveness_cos_similarity_{method}_{stage}_{heatmap_scaling}_16.10.2025"
+      "output_folder": "distinctiveness_cos_similarity_{method}_{stage}_{heatmap_scaling}_no_baseline_29.09.2025"
     }
   },
 

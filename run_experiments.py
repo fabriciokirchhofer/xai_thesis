@@ -481,6 +481,7 @@ def main():
     with open(os.path.join(results_dir, 'metrics.json'), 'w') as mf:
         json.dump(results, mf, indent=4)
     np.save(os.path.join(results_dir, 'ensemble_probs.npy'), ensemble_probs)
+    np.save(os.path.join(results_dir, 'GT_labels.npy'), subset_gt_labels)
     if do_grid_search:
         np.save(os.path.join(results_dir, 'f1_grid.npy'), f1_grid)
     if pred_ensemble_labels is not None:
