@@ -1,0 +1,11 @@
+Experiment,Run folder,Saliency method,Input size,Baseline,Ensemble method,Evaluation type,AUROC_subset_mean,F1_subset_mean,Youden-index_subset_mean,Accuracy_subset_mean
+ensemble_BASELINE,001_average_val_5m_20250922_104635,BASELINE,N/A,,Average Weighted,validation,0.8699062582719843,0.7074674029449755,0.6142831573822871,0.825
+ensemble_BASELINE,001_average_test_5m_20250922_105258,BASELINE,N/A,,Average Weighted,test,0.8681551975071647,0.5688639232144256,0.5782053929343938,0.7908
+ensemble_LRP_original_24.09.2025,001_distinctiveness_weighted_val_5m_20250924_113603,LRP,original,,Distinctiveness Weighted,validation,0.8679188719090336,0.6962598996738876,0.5974508184736547,0.807
+ensemble_LRP_original_24.09.2025,001_distinctiveness_weighted_test_5m_20250924_114249,LRP,original,,Distinctiveness Weighted,test,0.8658743913540693,0.5699290135837058,0.5921899746252806,0.772
+ensemble_GradCAM_original_24.09.2025,001_distinctiveness_weighted_val_5m_20250924_160904,GradCAM,original,,Distinctiveness Weighted,validation,0.8689318294402615,0.7018535149828802,0.6005460826337989,0.8030000000000002
+ensemble_GradCAM_original_24.09.2025,001_distinctiveness_weighted_test_5m_20250924_161447,GradCAM,original,,Distinctiveness Weighted,test,0.8680894261682269,0.5751337972817595,0.5860274229124711,0.7724
+ensemble_DeepLift_320_no_baseline_29.09.2025,001_distinctiveness_weighted_val_5m_20250929_112138,DeepLift,320,no baseline,Distinctiveness Weighted,validation,0.8694390572458396,0.7081018175068685,0.6113225987054216,0.8190000000000002
+ensemble_DeepLift_320_no_baseline_29.09.2025,001_distinctiveness_weighted_test_5m_20250929_114902,DeepLift,320,no baseline,Distinctiveness Weighted,test,0.8689180852522007,0.5853975130922157,0.595540286767519,0.7936
+ensemble_IG_1280_no_baseline_28.09.2025,001_distinctiveness_weighted_val_5m_20250929_094501,IG,1280,no baseline,Distinctiveness Weighted,validation,0.8694438980813638,0.7088330812917858,0.6155489801670972,0.826
+ensemble_IG_1280_no_baseline_28.09.2025,001_distinctiveness_weighted_test_5m_20250929_100545,IG,1280,no baseline,Distinctiveness Weighted,test,0.8680394688403197,0.5688957518289973,0.577684182870752,0.7912

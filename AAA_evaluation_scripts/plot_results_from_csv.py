@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import os
 
 # --- Config ---
-csv_path = "/home/fkirchhofer/repo/xai_thesis/A_experiments_FINAL_01/ensemble_results_summary.csv"
-ensemble_method_main = "distinctiveness weighted"  # main method to compare against
+csv_path = "/home/fkirchhofer/repo/xai_thesis/A_experiments_FINAL_01/ensemble_results_summary_weight.csv"
+ensemble_method_main = "distinctiveness weighted"  # main method to compare against - "distinctiveness weighted" or "distinctiveness voting" 
 baseline_ensemble_methods = ["average weighted"]
 evaluation_set = "validation"  # "validation" or "test"
 
@@ -51,7 +51,7 @@ sub["label"] = (
     sub["Baseline"].astype(str))
 
 # --- Output dir ---
-out_dir = "/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/01_results_comparison"
+out_dir = "/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/02_thesis_sub_group_results_comparison"
 os.makedirs(out_dir, exist_ok=True)
 
 # -----------------
@@ -89,37 +89,4 @@ plt.tight_layout()
 file_name = f"{ensemble_method_main.replace(' ', '_')}_vs_baseline_{evaluation_set}_set_bar.png"
 plt.savefig(os.path.join(out_dir, file_name), dpi=200)
 plt.close()
-
-# -----------------
-# Heatmap-style matrix (rows: Saliency|Input size|Ensemble method)
-# -----------------
-# mat = sub.pivot_table(
-#     index=["Saliency method", "Input size", "Ensemble method"],
-#     columns="Baseline",
-#     values="F1_subset_mean",
-#     aggfunc="mean"
-# ).sort_index()
-
-# fig, ax = plt.subplots(figsize=(10, max(4, 0.6*len(mat.index))))
-# im = ax.imshow(mat.values, aspect="auto")
-# ax.set_xticks(np.arange(len(mat.columns)))
-# ax.set_xticklabels(mat.columns.tolist(), rotation=0)
-# row_labels = [f"{i[0]} | {i[1]} | {i[2]}" for i in mat.index]
-# ax.set_yticks(np.arange(len(mat.index)))
-# ax.set_yticklabels(row_labels)
-# ax.set_title(f"F1 matrix — {ensemble_method_main.title()} + Baselines — {evaluation_set}")
-# ax.set_xlabel("Baseline")
-# ax.set_ylabel("Saliency | Input size | Ensemble")
-
-# # Annotate values (5 decimals)
-# for i in range(mat.shape[0]):
-#     for j in range(mat.shape[1]):
-#         val = mat.values[i, j]
-#         if not pd.isna(val):
-#             ax.text(j, i, f"{val:.5f}", ha="center", va="center", fontsize=8)
-
-# fig.tight_layout()
-# file_name = f"heat_{ensemble_method_main.replace(' ', '_')}_{evaluation_set}_with_baselines.png"
-# fig.savefig(os.path.join(out_dir, file_name), dpi=200)
-# plt.close()
 

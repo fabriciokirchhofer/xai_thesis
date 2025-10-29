@@ -379,7 +379,7 @@ class StrategyFactory:
         
 
 
-                # Weighted average with fixed weights
+        # Weighted average with fixed weights
         if name == 'weighted':
             weights = params.get('weights') # TODO: Define 'weights' in the config file. In run_experiments.py it will be called as ensemble_cfg (ca line 102)
             assert weights is not None, "Weights must be provided for weighted strategy"

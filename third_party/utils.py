@@ -199,12 +199,13 @@ def get_target_layer(model:torch.nn.Module, layer_name:str=None, method:str='gra
         if isinstance(module, torch.nn.Conv2d):
             target_layer = module
             # Section for first conv layer with ResNet152 and LRP
-            if model.__class__.__name__ == 'ResNet121' and method=='lrp':
-                print(f"Idx when returning layer for LRP: {idx}")
-                print("Recognized Resnet")
-                return target_layer
+            # if model.__class__.__name__ == 'ResNet152' and method=='lrp':
+            #     print(f"Idx when returning layer for LRP: {idx}")
+            #     print("Recognized Resnet")
+            #     return target_layer
     if target_layer is None:
         raise ValueError("Could not find a convolutional layer in the model.")
+    print("Returned last conv layer.")
     return target_layer
 
 
