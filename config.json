@@ -85,11 +85,11 @@
   "saliency_script": {
     "base_dir": "~/repo/xai_thesis/",
     "saliency":{
-      "method": "LRP",
+      "method": "IG",
       "heatmap_scaling":"original",
       "map_folder": "saliency_maps_{method}",
       "cache_folder": "heatmap_cache_{method}_{stage}_{heatmap_scaling}_29.10.2025",
-      "manifold_name": "ckpt_d_ignore_1"},
+      "manifold_name": "ckpt_r_ignore_3x_ep2_2"},
     "distinctiveness":{
       "function": "cosine_similarity",
       "output_folder": "distinctiveness_cos_similarity_{method}_{stage}_{heatmap_scaling}_29.10.2025"

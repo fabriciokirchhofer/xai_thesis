@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import os
 
 # --- Config ---
-csv_path = "/home/fkirchhofer/repo/xai_thesis/A_experiments_FINAL_01/ensemble_results_summary_weight.csv"
+csv_path = "/home/fkirchhofer/repo/xai_thesis/A_experiments_FINAL_01/ensemble_results_summary_weight.csv" # vote or weight
 ensemble_method_main = "distinctiveness weighted"  # main method to compare against - "distinctiveness weighted" or "distinctiveness voting" 
-baseline_ensemble_methods = ["average weighted"]
+baseline_ensemble_methods = ["average weighted"] # "average weighted" or "average voting"
 evaluation_set = "validation"  # "validation" or "test"
 
 # --- Load ---
@@ -42,7 +42,7 @@ sub = pd.concat([sub_main, sub_base], ignore_index=True)
 # --- Sort values ---
 order_saliency = ["BASELINE", "LRP", "GradCAM", "DeepLift", "IG"]
 sub["Saliency method"] = pd.Categorical(sub["Saliency method"], categories=order_saliency, ordered=True)
-sub.sort_values(["Saliency method", "Input size", "Baseline"], inplace=True)
+sub.sort_values(["F1_subset_mean", "Saliency method", "Input size", "Baseline"], inplace=True)
 
 # --- Labels ---
 sub["label"] = (
@@ -78,7 +78,7 @@ plt.title(f"F1 scores — {ensemble_method_main.title()} vs Baseline — {evalua
 min_val = sub["F1_subset_mean"].min()
 max_val = sub["F1_subset_mean"].max()
 margin = max(0.002, 0.02 * (max_val - min_val if max_val > min_val else 1))
-plt.ylim(min_val - margin, max_val + margin)
+plt.ylim(min_val - margin, max_val + margin + 0.002)
 
 # Value labels (5 decimals)
 for bar, val in zip(bars, sub["F1_subset_mean"].values):
@@ -86,7 +86,7 @@ for bar, val in zip(bars, sub["F1_subset_mean"].values):
              ha="center", va="bottom", fontsize=8, rotation=90)
 
 plt.tight_layout()
-file_name = f"{ensemble_method_main.replace(' ', '_')}_vs_baseline_{evaluation_set}_set_bar.png"
+file_name = f"{ensemble_method_main.replace(' ', '_')}_vs_baseline_{evaluation_set}_set_bar02.png"
 plt.savefig(os.path.join(out_dir, file_name), dpi=200)
 plt.close()
 
