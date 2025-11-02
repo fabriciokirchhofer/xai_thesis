@@ -5,6 +5,7 @@ import datetime
 import copy
 import shutil
 import numpy as np
+import pandas as pd
 import torch
 from third_party import run_models, utils
 from ensemble import ensemble as ens_module
@@ -186,6 +187,9 @@ def main():
     ens_thresholds_path = ensemble_cfg.get('thresholds_path')
     ens_thresholds = None
     pred_ensemble_labels = None
+    if do_grid_search:
+        thresholds_grid = [[None for _ in range(len(grid_vals_b))] for _ in range(len(grid_vals_a))]
+        pred_ensemble_labels_grid = [[None for _ in range(len(grid_vals_b))] for _ in range(len(grid_vals_a))]
 
     if strategy_name not in ('distinctiveness_voting', 'average_voting'):
         for i, a in enumerate(grid_vals_a):
@@ -249,13 +253,7 @@ def main():
                         evaluation_sub_tasks=eval_tasks)
                     # print(f"Returned metrics: {metrics}")
                     f1_grid[i, j] = metrics['F1_subset_mean']
-
-        # Plot graph which shows the probabilities and where the threshold for the binary prediction is
-        utils.plot_threshold_effects(ensemble_probs=ensemble_probs,
-                                binary_preds=pred_ensemble_labels,
-                                thresholds=ens_thresholds,
-                                class_names=tasks,
-                                save_path=os.path.join(results_dir, "plots/threshold_effects"))
+                    thresholds_grid[i][j] = ens_thresholds
 
 
     # ****************** Voting structure start ******************
@@ -272,6 +270,8 @@ def main():
             stack = np.array(model_probs_list)
 
         per_model_thresholds = None
+        if do_grid_search:
+            per_model_thresholds_grid = [[None for _ in range(len(grid_vals_b))] for _ in range(len(grid_vals_a))]
 
         # Optuna patch - START
         if tune_cfg.get("stage") == 'none':
@@ -384,6 +384,8 @@ def main():
                         evaluation_sub_tasks=eval_tasks)
                     #print(f"Returned metrics: {metrics}")
                     f1_grid[i, j] = metrics['F1_subset_mean']
+                    thresholds_grid[i][j] = ens_thresholds
+                    per_model_thresholds_grid[i][j] = per_model_voting_thresholds
 
     # ****************** Voting structure ends ******************
 
@@ -402,6 +404,9 @@ def main():
         print("Retrieve the best a and b vals")
         # Find best (a, b)
         best_idx = np.unravel_index(np.nanargmax(f1_grid), f1_grid.shape)
+        ens_thresholds = thresholds_grid[best_idx[0]][best_idx[1]]
+        if strategy_name in ('distinctiveness_voting', 'average_voting'):
+            per_model_voting_thresholds = per_model_thresholds_grid[best_idx[0]][best_idx[1]]
         best_a = float(grid_vals_a[best_idx[0]])
         best_b = float(grid_vals_b[best_idx[1]])
         best_f1 = float(f1_grid[best_idx]) 
@@ -412,6 +417,13 @@ def main():
             "best_a": best_a,
             "best_b": best_b,
             "best_f1_subset_mean": best_f1}
+
+    # Plot graph which shows the probabilities and where the threshold for the binary prediction is
+    utils.plot_threshold_effects(ensemble_probs=ensemble_probs,
+                            binary_preds=pred_ensemble_labels,
+                            thresholds=ens_thresholds,
+                            class_names=tasks,
+                            save_path=os.path.join(results_dir, "plots/threshold_effects"))
 
     evaluator.plot_roc(predictions=ensemble_probs,
                     ground_truth=subset_gt_labels,
@@ -471,13 +483,22 @@ def main():
 
 
     # if we used distinctiveness_weighted, save its weight matrix
-    if strategy_name.lower() == 'distinctiveness_weighted' and hasattr(strategy_fn, 'weight_matrix'):
+    if hasattr(strategy_fn, 'weight_matrix'):
         wm = strategy_fn.weight_matrix  # this is a NumPy array of shape (n_models, n_classes)
         wm_path = os.path.join(results_dir, 'distinctiveness_weight_matrix.json')
-        # convert to nested lists so it’s JSON‐serializable
+
+        # convert to nested lists so it's JSON‐serializable
         with open(wm_path, 'w') as wm_file:
             json.dump(wm.tolist(), wm_file, indent=2)
-
+        
+        # Also save as CSV with labeled models and classes
+        wm_csv_path = os.path.join(results_dir, 'distinctiveness_weight_matrix.csv')
+        # Get model names from ensemble_cfg, or fallback to generic names
+        model_names_labels = ensemble_cfg.get('model_names', [f'Model_{chr(65+i)}' for i in range(len(wm))])
+        df = pd.DataFrame(wm, index=model_names_labels, columns=tasks)
+        df.to_csv(wm_csv_path, index=True)
+        print(f"Distinctiveness weight matrix saved as CSV to: {wm_csv_path}")
+        
     with open(os.path.join(results_dir, 'metrics.json'), 'w') as mf:
         json.dump(results, mf, indent=4)
     np.save(os.path.join(results_dir, 'ensemble_probs.npy'), ensemble_probs)

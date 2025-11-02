@@ -1,0 +1,32 @@
+Metric Type,Task,Value
+Accuracy,Overall,0.6469204425811768
+F1 Score,No Finding,0.5415162454873645
+F1 Score,Enlarged Cardiomediastinum,0.616842105263158
+F1 Score,Cardiomegaly,0.49310872894333846
+F1 Score,Lung Opacity,0.6339468302658486
+F1 Score,Lung Lesion,0.05700712589073634
+F1 Score,Edema,0.5068493150684932
+F1 Score,Consolidation,0.19653179190751444
+F1 Score,Pneumonia,0.06504065040650407
+F1 Score,Atelectasis,0.5720338983050848
+F1 Score,Pneumothorax,0.07954545454545454
+F1 Score,Pleural Effusion,0.6582278481012658
+F1 Score,Pleural Other,0.14141414141414144
+F1 Score,Fracture,0.017804154302670624
+F1 Score,Support Devices,0.8085106382978723
+Youden Index,No Finding,tensor(0.5217)
+Youden Index,Enlarged Cardiomediastinum,tensor(0.0130)
+Youden Index,Cardiomegaly,tensor(0.2770)
+Youden Index,Lung Opacity,tensor(0.)
+Youden Index,Lung Lesion,tensor(0.2532)
+Youden Index,Edema,tensor(0.6425)
+Youden Index,Consolidation,tensor(0.2946)
+Youden Index,Pneumonia,tensor(0.1252)
+Youden Index,Atelectasis,tensor(0.4339)
+Youden Index,Pneumothorax,tensor(0.4584)
+Youden Index,Pleural Effusion,tensor(0.6988)
+Youden Index,Pleural Other,tensor(0.7477)
+Youden Index,Fracture,tensor(0.)
+Youden Index,Support Devices,tensor(0.6643)
+Average Youden Index,Eval Tasks,tensor(0.4693)
+Average F1 Score,Eval Tasks,0.48535031646513926

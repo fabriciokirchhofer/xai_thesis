@@ -265,7 +265,7 @@ class StrategyFactory:
                 return weighted_sum  # shape: (N, C) NumPy array            
             # make it accessible
             distinctiveness_fn.weight_matrix = weight_matrix.copy() 
-            distinctiveness_fn.weighted_sum = weight_matrix.copy()
+            #distinctiveness_fn.weighted_sum = weighted_sum.copy()
             return distinctiveness_fn
        
        
@@ -375,6 +375,7 @@ class StrategyFactory:
                 soft_scores = (preds * adjusted_weights[:, np.newaxis, :]).sum(axis=0)
 
                 return soft_scores#, gt_labels, per_model_voting_thresholds  # shape (N, C), in [0,1]
+            dv_soft.weight_matrix = weight_matrix.copy() 
             return dv_soft
         
 

@@ -59,14 +59,14 @@ def main():
     parser = argparse.ArgumentParser(description="Compare ensemble strategies via bootstrap F1 score differences.")
 
     # --- Input ensemble roots ---
-    parser.add_argument("--DW_path", default="/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_weighted_test_5m_20251016_152408",
+    parser.add_argument("--DW_path", default="/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_weighted_test_5m_20251101_173806",
                         help="Root to DW folder (shape (N, C))")
     
-    parser.add_argument("--DV_path", default="/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_voting_test_5m_20251016_155405",
+    parser.add_argument("--DV_path", default="/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_voting_test_5m_20251101_174230",
                         help="Root to DV folder (shape (N, C))")
     
     # --- Output directory ---
-    parser.add_argument("--output_dir", default="/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/BOOT_DeepLift_test_original_no_baseline",
+    parser.add_argument("--output_dir", default="/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/BOOT_DeepLift_test_original_no_baseline_60",
                     help="Directory to save output plots and summary table")
     
     # BASELINE - Should not change
@@ -76,12 +76,11 @@ def main():
     parser.add_argument("--AV_path", default="/home/fkirchhofer/repo/xai_thesis/ensemble_BASELINE_original_16.10.2025/001_average_voting_test_5m_20251016_160445",
                         help="root to AV folder (shape (N, C))")
 
-
-    # GT - Should not change
-    parser.add_argument("--gt_path", default="/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_weighted_test_5m_20251016_152408/GT_labels.npy",
+    # GT - Does not change
+    parser.add_argument("--gt_path", default="/home/fkirchhofer/repo/xai_thesis/ensemble_DeepLift_original_no_baseline_29.09.2025/001_distinctiveness_weighted_test_5m_20251101_173806/GT_labels.npy",
                         help="Path to ground_truth.npy (shape (N, C))")
 
-    parser.add_argument("--n_bootstraps", type=int, default=1000, help="Number of bootstrap iterations (default: 1000)")
+    parser.add_argument("--n_bootstraps", type=int, default=30, help="Number of bootstrap iterations (default: 1000)")
     args = parser.parse_args()
 
     AW_probs_path, AW_preds_path = find_ensemble_outputs(args.AW_path)

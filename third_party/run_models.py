@@ -4,13 +4,13 @@ import torch
 from torchvision import transforms
 import json
 # python -m third_party.run_models
-# import third_party.utils as utils
-# import third_party.dataset as dataset
-# import third_party.models as models
+import third_party.utils as utils
+import third_party.dataset as dataset
+import third_party.models as models
 
-import utils
-import dataset
-import models
+#import utils
+#import dataset
+#import models
 
 # from third_party import utils
 # from third_party import dataset
@@ -59,8 +59,8 @@ def create_parser():
     parser.add_argument('--pretrained',type=bool, default=True, help='Use pre-trained model')
     parser.add_argument('--model_uncertainty', type=bool, default=False, help='Use model uncertainty') # If not further used it can be removed
     parser.add_argument('--batch_size', type=int, default=64, help='The batch size which will be passed to the model')
-    parser.add_argument('--model', type=str, default='ResNet152', help='specify model name')
-    parser.add_argument('--ckpt', type=str, default=ckpt_r_ignore_3x_ep2_2, help='Path to checkpoint file')
+    parser.add_argument('--model', type=str, default='DenseNet121', help='specify model name')
+    parser.add_argument('--ckpt', type=str, default=ckpt_d_ignore_1, help='Path to checkpoint file')
 
     parser.add_argument('--save_acc_roc', type=bool, default=False, help='Save accuracy and auroc during validation to csv file')
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
@@ -69,7 +69,7 @@ def create_parser():
     parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='compute', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside
@@ -365,8 +365,8 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                           model_name=model_args.model)
 
 
-            acc = utils.compute_accuracy(tuned_predictions, gt_labels)
-            print(f"[Validatoin] Accuracy using tuned thresholds: {acc:.4f}")
+            tuned_acc = utils.compute_accuracy(tuned_predictions, gt_labels)
+            print(f"[Validation] Accuracy using tuned thresholds: {tuned_acc:.4f}")
 
             youden = utils.comput_youden_idx(ground_truth=gt_labels,
                                              preds=tuned_predictions,
@@ -382,7 +382,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
             avg_f1    = sum(f1[task]    for task in eval_tasks) / len(eval_tasks)
 
             results = {
-                "accuracy": float(acc),
+                "accuracy": float(tuned_acc),
                 "youden_index":    { task: float(youden[task]) for task in tasks },
                 "f1_score":        { task: float(f1[task])    for task in tasks },
                 "average_youden_index": float(avg_youden),
@@ -405,6 +405,7 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                 # ROC AUC for each task
                 for task, auc in optimal_thresholds.items():
                     writer.writerow([task, auc])
+            
 
 
         # Save accuracy based on sigmoid threshold to csv file
@@ -419,6 +420,45 @@ def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=T
                 # ROC AUC for each task
                 for task, auc in auroc.items():
                     writer.writerow([f'ROC AUC {task}', auc])
+
+        # Always save comprehensive evaluation results to CSV in singel_model_evaluation folder
+        eval_results_dir = os.path.expanduser('~/repo/xai_thesis/third_party/singel_model_evaluation')
+        os.makedirs(eval_results_dir, exist_ok=True)
+        
+        # Create a comprehensive results CSV
+        results_csv_path = os.path.join(eval_results_dir, f'{model_args.model}_evaluation_results.csv')
+        
+        # Prepare data for CSV
+        csv_rows = []
+        
+        # Add AUROC results
+        csv_rows.append(['Metric Type', 'Task', 'Value'])
+        for task, auc_value in auroc.items():
+            csv_rows.append(['AUROC', task, auc_value])
+        csv_rows.append(['AUROC', 'Average (Eval Tasks)', eval_auroc])
+        csv_rows.append(['Accuracy', 'Overall', acc])
+        
+        # Add F1 and Youden metrics if threshold tuning was done
+        if model_args.tune_thresholds:
+            # Access youden, f1, avg_youden, avg_f1, tuned_acc that were computed in the tune_thresholds block
+            csv_rows.append(['Accuracy (Tuned)', 'Overall', tuned_acc])
+            csv_rows.append(['Average Youden Index', 'Eval Tasks', avg_youden])
+            csv_rows.append(['Average F1 Score', 'Eval Tasks', avg_f1])
+            
+            # Add per-task F1 scores
+            for task, f1_val in f1.items():
+                csv_rows.append(['F1 Score', task, f1_val])
+            
+            # Add per-task Youden indices
+            for task, youden_val in youden.items():
+                csv_rows.append(['Youden Index', task, youden_val])
+        
+        # Write to CSV
+        with open(results_csv_path, mode='w', newline='') as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerows(csv_rows)
+        
+        print(f"Saved comprehensive evaluation results to {results_csv_path}")
 
     print("********** Finished Eval mode **********")
 
@@ -478,6 +518,43 @@ def run_test_with_thresholds(model, model_args, tasks, test_loader, threshold_cs
     print(f"[TEST] F1-score using tuned thresholds")
     for task in tasks:
         print(f"{task}: score = {f1[task]:.4f}")
+    
+    # Save test results to CSV (exclude AUROC as requested)
+    eval_results_dir = os.path.expanduser('~/repo/xai_thesis/third_party/singel_model_evaluation')
+    os.makedirs(eval_results_dir, exist_ok=True)
+    
+    test_results_csv_path = os.path.join(eval_results_dir, f'{model_args.model}_test_evaluation_results.csv')
+    
+    # Prepare CSV data
+    csv_rows = []
+    csv_rows.append(['Metric Type', 'Task', 'Value'])
+    
+    # Add accuracy
+    csv_rows.append(['Accuracy', 'Overall', acc])
+    
+    # Add per-task F1 scores
+    for task, f1_val in f1.items():
+        csv_rows.append(['F1 Score', task, f1_val])
+    
+    # Add per-task Youden indices
+    for task, youden_val in youden.items():
+        csv_rows.append(['Youden Index', task, youden_val])
+    
+    # Calculate averages for eval tasks
+    eval_tasks = ['Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
+    avg_youden = sum(youden[task] for task in eval_tasks) / len(eval_tasks)
+    avg_f1 = sum(f1[task] for task in eval_tasks) / len(eval_tasks)
+    
+    csv_rows.append(['Average Youden Index', 'Eval Tasks', avg_youden])
+    csv_rows.append(['Average F1 Score', 'Eval Tasks', avg_f1])
+    
+    # Write to CSV
+    with open(test_results_csv_path, mode='w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerows(csv_rows)
+    
+    print(f"Saved test evaluation results to {test_results_csv_path}")
+    
     return {"accuracy": acc}
 
 

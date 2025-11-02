@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 import os
 
 # --- Config ---
-csv_path = "/home/fkirchhofer/repo/xai_thesis/A_experiments_FINAL_01/ensemble_results_summary_weight.csv" # vote or weight
-ensemble_method_main = "distinctiveness weighted"  # main method to compare against - "distinctiveness weighted" or "distinctiveness voting" 
-baseline_ensemble_methods = ["average weighted"] # "average weighted" or "average voting"
-evaluation_set = "validation"  # "validation" or "test"
+csv_path = "/home/fkirchhofer/repo/xai_thesis/A_experiments_FINAL_01/ensemble_results_summary_vote.csv" # vote or weight
+ensemble_method_main = "distinctiveness voting"  # main method to compare against - "distinctiveness weighted" or "distinctiveness voting" 
+baseline_ensemble_methods = ["average voting"] # "average weighted" or "average voting"
+evaluation_set = "test"  # "validation" or "test"
 
 # --- Load ---
 df = pd.read_csv(csv_path)
@@ -35,9 +35,23 @@ sub_base = df.loc[baseline_mask & no_saliency_mask, main_cols].copy()
 # Normalize/label baseline rows
 sub_base["Saliency method"] = "BASELINE"
 sub_base["Input size"] = sub_base["Input size"].fillna("—")
+sub_base["Baseline"] = "-"
 
 # --- Combine ---
 sub = pd.concat([sub_main, sub_base], ignore_index=True)
+
+# --- Normalize Baseline label values for readability ---
+def _map_baseline_label(val):
+    s = str(val).strip().lower()
+    if s in ("", "nan", "na", "-", "—", "--"):
+        return "—"
+    if s == "no baseline":
+        return "zero-signal"
+    if s == "with baseline":
+        return "average CXR"
+    return val
+
+sub["Baseline"] = sub["Baseline"].apply(_map_baseline_label)
 
 # --- Sort values ---
 order_saliency = ["BASELINE", "LRP", "GradCAM", "DeepLift", "IG"]
@@ -74,6 +88,13 @@ plt.xticks(x, sub["label"].tolist(), rotation=60, ha="right")
 plt.ylabel("F1 (subset mean)")
 plt.title(f"F1 scores — {ensemble_method_main.title()} vs Baseline — {evaluation_set} set")
 
+# Add horizontal dashed line at BASELINE F1
+baseline_vals = sub.loc[sub["Saliency method"].astype(str) == "BASELINE", "F1_subset_mean"].values
+if baseline_vals.size > 0:
+    baseline_f1 = float(np.mean(baseline_vals))
+    plt.axhline(y=baseline_f1, color="#444444", linestyle="--", linewidth=1,
+                label=f"Baseline F1 = {baseline_f1:.5f}")
+
 # Zoom into ROI
 min_val = sub["F1_subset_mean"].min()
 max_val = sub["F1_subset_mean"].max()
@@ -86,7 +107,7 @@ for bar, val in zip(bars, sub["F1_subset_mean"].values):
              ha="center", va="bottom", fontsize=8, rotation=90)
 
 plt.tight_layout()
-file_name = f"{ensemble_method_main.replace(' ', '_')}_vs_baseline_{evaluation_set}_set_bar02.png"
+file_name = f"{ensemble_method_main.replace(' ', '_')}_vs_baseline_{evaluation_set}_set_bar.png"
 plt.savefig(os.path.join(out_dir, file_name), dpi=200)
 plt.close()
 

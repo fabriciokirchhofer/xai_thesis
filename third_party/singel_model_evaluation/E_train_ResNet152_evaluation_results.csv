@@ -1,0 +1,48 @@
+Metric Type,Task,Value
+AUROC,No Finding,0.896551724137931
+AUROC,Enlarged Cardiomediastinum,0.48230576441102757
+AUROC,Cardiomegaly,0.6895070104025328
+AUROC,Lung Opacity,0.4939449917898194
+AUROC,Lung Lesion,0.2613065326633166
+AUROC,Edema,0.8624171187462326
+AUROC,Consolidation,0.8686755952380952
+AUROC,Pneumonia,0.7376302083333334
+AUROC,Atelectasis,0.7774933333333333
+AUROC,Pneumothorax,0.7568728522336771
+AUROC,Pleural Effusion,0.9054457720588235
+AUROC,Pleural Other,0.9597989949748744
+AUROC,Fracture,nan
+AUROC,Support Devices,0.8530853085308531
+AUROC,Average (Eval Tasks),0.8207077659558035
+Accuracy,Overall,0.770714282989502
+Accuracy (Tuned),Overall,0.6614285707473755
+Average Youden Index,Eval Tasks,tensor(0.5177)
+Average F1 Score,Eval Tasks,0.6546065588178217
+F1 Score,No Finding,0.5625
+F1 Score,Enlarged Cardiomediastinum,0.688963210702341
+F1 Score,Cardiomegaly,0.5363636363636364
+F1 Score,Lung Opacity,0.7341772151898733
+F1 Score,Lung Lesion,0.013333333333333332
+F1 Score,Edema,0.6548672566371682
+F1 Score,Consolidation,0.6285714285714286
+F1 Score,Pneumonia,0.16216216216216217
+F1 Score,Atelectasis,0.6885245901639344
+F1 Score,Pneumothorax,0.11940298507462688
+F1 Score,Pleural Effusion,0.7647058823529411
+F1 Score,Pleural Other,0.1111111111111111
+F1 Score,Fracture,0.0
+F1 Score,Support Devices,0.8272251308900525
+Youden Index,No Finding,tensor(0.5774)
+Youden Index,Enlarged Cardiomediastinum,tensor(0.0231)
+Youden Index,Cardiomegaly,tensor(0.1850)
+Youden Index,Lung Opacity,tensor(0.)
+Youden Index,Lung Lesion,tensor(0.2563)
+Youden Index,Edema,tensor(0.6658)
+Youden Index,Consolidation,tensor(0.5923)
+Youden Index,Pneumonia,tensor(0.2396)
+Youden Index,Atelectasis,tensor(0.4800)
+Youden Index,Pneumothorax,tensor(0.3729)
+Youden Index,Pleural Effusion,tensor(0.6654)
+Youden Index,Pleural Other,tensor(0.9196)
+Youden Index,Fracture,tensor(-1.)
+Youden Index,Support Devices,tensor(0.6693)
