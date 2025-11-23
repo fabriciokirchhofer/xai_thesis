@@ -42,4 +42,3 @@ dependencies:
     - tqdm==4.64.0
     - typing-extensions==3.7.4.3
 
-prefix: C:\Users\fabri\anaconda3\envs\xai

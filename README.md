@@ -39,6 +39,7 @@ xai_thesis/
 ├── config.json             # Configuration file (paths, models, ensemble settings)
 ├── third_party/
 │   ├── run_models.py       # Individual model evaluation
+│   ├── saliency_maps.py    # XAI saliency map generation
 │   ├── utils.py            # Utility functions (XAI, distinctiveness, metrics)
 │   ├── models.py           # Model architectures
 │   └── dataset.py          # Data loading
@@ -110,6 +111,50 @@ Evaluate a single model:
 cd third_party
 python run_models.py --model DenseNet121 --ckpt path/to/checkpoint.ckpt
 ```
+
+### Saliency Map Generation
+
+Generate saliency maps (XAI visualizations) for model interpretability analysis:
+
+```bash
+cd third_party
+python saliency_maps.py --model DenseNet121 --ckpt path/to/checkpoint.ckpt --saliency compute
+```
+
+**Saliency modes:**
+- `compute`: Compute and save heatmaps to cache (`.npz` files)
+- `get`: Load pre-computed heatmaps from cache
+- `save_img`: Compute/load heatmaps and save overlay images (PNG files)
+
+**Example usage:**
+
+```bash
+# Compute and cache heatmaps
+python saliency_maps.py --model DenseNet121 --ckpt path/to/checkpoint.ckpt --saliency compute
+
+# Generate visualization images from cached heatmaps
+python saliency_maps.py --model DenseNet121 --ckpt path/to/checkpoint.ckpt --saliency save_img
+
+# Load existing heatmaps (for analysis)
+python saliency_maps.py --model DenseNet121 --ckpt path/to/checkpoint.ckpt --saliency get
+```
+
+**Supported XAI methods** (configured in `config.json` under `saliency_script.saliency.method`):
+- `gradcam`: Gradient-weighted Class Activation Mapping
+- `lrp`: Layer-wise Relevance Propagation
+- `ig`: Integrated Gradients
+- `deeplift`: DeepLIFT
+
+**Output:**
+- Heatmap cache: Saved to `heatmap_cache_*/` directory (excluded from git)
+- Saliency map images: Saved to `saliency_maps_*/` directory (excluded from git)
+- Distinctiveness scores: Saved to `distinctiveness_*/` directory (JSON files and boxplots)
+
+**Important notes:**
+- Batch size is automatically set to 1 (required for saliency computation)
+- The script processes 5 evaluation classes: Cardiomegaly, Edema, Consolidation, Atelectasis, Pleural Effusion
+- For IG/DeepLIFT methods, a baseline tensor can be specified (default: mean image at `/home/fkirchhofer/repo/xai_thesis/third_party/mean_image.pt`)
+- Update the config path in `saliency_maps.py` (line 33) if `config.json` is located elsewhere
 
 ## Configuration
 
