@@ -398,6 +398,14 @@ def main():
         evaluation_sub_tasks=eval_cfg.get('evaluation_sub_tasks', eval_tasks),
         tasks=tasks) 
     print(f"CHECK - Evaluation completed with ensemble probs shape: {ensemble_probs.shape} in mode: {args_model.run_test}")
+    
+    # Compute confusion matrix metrics
+    confusion_matrix_df = evaluator.compute_confusion_matrix_metrics(
+        binary_preds=pred_ensemble_labels,
+        targets=subset_gt_labels,
+        tasks=tasks)
+    print("\nConfusion Matrix Metrics:")
+    print(confusion_matrix_df.to_string(index=False))
 
     if do_grid_search:
         print(f"Final f1_grid: {f1_grid}")
@@ -511,6 +519,10 @@ def main():
         np.save(os.path.join(results_dir, 'thresholds.npy'), ens_thresholds)
     if per_model_voting_thresholds is not None:
         np.save(os.path.join(results_dir, 'per_model_voting_thresholds.npy'), per_model_voting_thresholds)
+    
+    # Save confusion matrix metrics
+    confusion_matrix_df.to_csv(os.path.join(results_dir, 'confusion_matrix_metrics.csv'), index=False)
+    print(f"Confusion matrix metrics saved to: {os.path.join(results_dir, 'confusion_matrix_metrics.csv')}")
 
     print(f"Experiment complete. Results saved in {results_dir}")
 

@@ -4,13 +4,13 @@ import torch
 from torchvision import transforms
 import json
 # python -m third_party.run_models
-import third_party.utils as utils
-import third_party.dataset as dataset
-import third_party.models as models
+#import third_party.utils as utils
+#import third_party.dataset as dataset
+#import third_party.models as models
 
-#import utils
-#import dataset
-#import models
+import utils
+import dataset
+import models
 
 # from third_party import utils
 # from third_party import dataset
@@ -66,10 +66,10 @@ def create_parser():
     parser.add_argument('--sigmoid_threshold', type=float, default=0.5, help='The threshold to activate sigmoid function. Used for model evaluation in validation.')
     parser.add_argument('--tune_thresholds', type=bool, default=False, help='If True, find optimal per-class thresholds using F1 score. Will save it.')
     parser.add_argument('--metric', type=str, default='f1', help='Choose evaluation evaluation metric. Can be "f1" or "youden".')
-    parser.add_argument('--run_test', type=bool, default=False, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
+    parser.add_argument('--run_test', type=bool, default=True, help='Runs the test set for evaluation. Needs thresholds from tune_thresholds as a csv file.')
 
     parser.add_argument('--plot_roc', type=bool, default=False, help='Plot the ROC curves for each task. Default false.')
-    parser.add_argument('--saliency', type=str, default='compute', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
+    parser.add_argument('--saliency', type=str, default='save_img', help='Whether to compute and save="compute", retreive stored="get", or compute and save imgage_maps="save_img"')
     return parser
 
 # Thin wrapper to take arguments from outside

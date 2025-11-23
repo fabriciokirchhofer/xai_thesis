@@ -545,3 +545,71 @@ def plot_umap_model_predictions(model_probs: list,
         raise ValueError("n_components must be 2 (for 2D) or 3 for (3D -> interactive html).")
 
     print(f"Saved UMAP ({n_components}D) to {out_path}")
+
+
+def compute_confusion_matrix_metrics(binary_preds: np.ndarray,
+                                     targets: np.ndarray,
+                                     tasks: list) -> pd.DataFrame:
+    """
+    Compute confusion matrix and derived metrics for each class in a multi-label setting.
+    
+    Parameters
+    ----------
+    binary_preds : (N, C) np.ndarray
+        Final 0/1 predictions after thresholding.
+    targets : (N, C) np.ndarray
+        Ground-truth binary labels.
+    tasks : list[str]
+        All class names; defines column order in arrays.
+    
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with rows for each task containing:
+        - TP, TN, FP, FN (confusion matrix components)
+        - Sensitivity (Recall/TPR)
+        - Specificity (TNR)
+        - Precision (PPV)
+        - NPV (Negative Predictive Value)
+        - F1-Score
+        - Accuracy
+        - Prevalence
+    """
+    metrics_list = []
+    
+    for task_idx, task in enumerate(tasks):
+        y_true = targets[:, task_idx]
+        y_pred = binary_preds[:, task_idx]
+        
+        # Compute confusion matrix components
+        tp = int(((y_true == 1) & (y_pred == 1)).sum())
+        tn = int(((y_true == 0) & (y_pred == 0)).sum())
+        fp = int(((y_true == 0) & (y_pred == 1)).sum())
+        fn = int(((y_true == 1) & (y_pred == 0)).sum())
+        
+        # Compute derived metrics
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0  # Recall/TPR
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0  # TNR
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0    # PPV
+        npv = tn / (tn + fn) if (tn + fn) > 0 else 0.0         # Negative Predictive Value
+        f1 = 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) > 0 else 0.0
+        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0
+        prevalence = (tp + fn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0
+        
+        metrics_list.append({
+            'Task': task,
+            'TP': tp,
+            'TN': tn,
+            'FP': fp,
+            'FN': fn,
+            'Sensitivity (Recall)': round(sensitivity, 4),
+            'Specificity': round(specificity, 4),
+            'Precision (PPV)': round(precision, 4),
+            'NPV': round(npv, 4),
+            'F1-Score': round(f1, 4),
+            'Accuracy': round(accuracy, 4),
+            'Prevalence': round(prevalence, 4)
+        })
+    
+    df = pd.DataFrame(metrics_list)
+    return df

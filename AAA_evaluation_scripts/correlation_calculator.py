@@ -235,13 +235,13 @@ def plot_correlation_heatmap(distinct_w: dict, optuna_w: dict, outpath: str, cor
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--distinct-root", default="/home/fkirchhofer/repo/xai_thesis/A_experiments_FINAL_01/distinctiveness_values/distinctiveness_cos_similarity_DeepLift_val_original_no_baseline_29.09.2025",
+    ap.add_argument("--distinct-root", default="/home/fkirchhofer/repo/xai_thesis/distinctiveness_cos_similarity_DeepLift_val_original_no_baseline_29.09.2025",
                      help="Root folder to walk for *class_wise_distinctiveness.json files")
     
     ap.add_argument("--optuna-json", default="/home/fkirchhofer/repo/xai_thesis/optimized_weights_with_multivariate_sampler_dist_weighted_300.json",
                     help="Path to Optuna weights JSON")
     
-    ap.add_argument("--outdir", default="/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/correlation_optuna_dist_voting_vs_DeepLift_val_original_no_baseline", 
+    ap.add_argument("--outdir", default="/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/weight_correlation_analysis/correlation_optuna_dist_weight_vs_DeepLift_val_original_no_baseline", 
                     help="Output directory")
     
     ap.add_argument("--baseline", type=float, default=0.2, 

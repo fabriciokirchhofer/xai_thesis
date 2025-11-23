@@ -65,7 +65,7 @@ sub["label"] = (
     sub["Baseline"].astype(str))
 
 # --- Output dir ---
-out_dir = "/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/02_thesis_sub_group_results_comparison"
+out_dir = "/home/fkirchhofer/repo/xai_thesis/AAA_evaluation_scripts/03_thesis_sub_group_results_comparison"
 os.makedirs(out_dir, exist_ok=True)
 
 # -----------------
