@@ -1,3 +1,60 @@
+# Model checkpoints
 *.ckpt
+*.pth
+
+# Images and data files
 *.png
+*.jpg
+*.jpeg
 *.npz
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Output directories
+ensemble_*/
+distinctiveness_*/
+heatmap_cache_*/
+saliency_maps_*/
+A_experiments_*/
+results/
+singel_model_evaluation/
+
+# Database files
+*.db
+optuna_ensemble.db
+
+# Log files
+*.txt
+!README.txt
+*.log
+logs/
+
+# Temporary files
+.DS_Store
+*.swp
+*.tmp
+*.bak
+*~
+
+# Archive (uncomment if not needed for submission)
+# zz_archive/
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Environment
+.env
+.venv
+env/
+venv/

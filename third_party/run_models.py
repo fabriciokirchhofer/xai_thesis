@@ -1,16 +1,31 @@
+"""
+Individual Model Evaluation Script
+
+This module provides functionality to evaluate single models on the CheXpert dataset.
+It supports multiple architectures (DenseNet121, ResNet152) and includes
+threshold tuning, ROC curve plotting, and comprehensive metric evaluation.
+
+Usage:
+    python run_models.py --model DenseNet121 --ckpt path/to/checkpoint.ckpt
+    python -m third_party.run_models
+"""
 import argparse
 import os
 import torch
 from torchvision import transforms
 import json
 # python -m third_party.run_models
-#import third_party.utils as utils
-#import third_party.dataset as dataset
-#import third_party.models as models
 
-import utils
-import dataset
-import models
+# Uncomment when running run_experiments.py and comment out when running run_models.py or saliency_map.py
+import third_party.utils as utils
+import third_party.dataset as dataset
+import third_party.models as models
+
+
+# Uncomment when running run_models.py or saliency_map.py and comment out when running run_experiments.py
+# import utils
+# import dataset
+# import models
 
 # from third_party import utils
 # from third_party import dataset
@@ -23,7 +38,8 @@ import logging
 logging.basicConfig(level=logging.DEBUG)  # or DEBUG for more verbosity
 logger = logging.getLogger(__name__)
 
-
+# NOTE: Hardcoded path - update to match your environment
+# This path is used to load device configuration from config.json
 with open("/home/fkirchhofer/repo/xai_thesis/config.json", "r") as f:
     config = json.load(f)
 requested_device = config.get("device", "cuda:0")
@@ -149,8 +165,26 @@ def load_checkpoint(model, checkpoint_path):
     return model
 
 
-# Prep dataset
 def prepare_data(model_args):
+    """
+    Build the evaluation DataLoader (validation or test) with transforms.
+
+    Parameters
+    ----------
+    model_args : argparse.Namespace
+        Must include `run_test` (bool), batch size, and other dataset knobs.
+
+    Returns
+    -------
+    torch.utils.data.DataLoader
+        Loader yielding (image, labels) pairs; normalization and resizing
+        are applied consistently across architectures.
+
+    Notes
+    -----
+    - Paths to CheXpert CSVs are expected at fixed locations; adjust if needed.
+    - Normalization assumes train statistics for the selected backbone.
+    """
     """
     Build the evaluation DataLoader (validation or test) with transforms.
 
@@ -190,6 +224,7 @@ def prepare_data(model_args):
 
     if not model_args.run_test:
         logger.info("Prepare validation data...")
+        # NOTE: Hardcoded paths - update to match your CheXpert dataset location
         data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/valid.csv'
         data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0/'
 
@@ -208,6 +243,7 @@ def prepare_data(model_args):
         #test_mean = torch.tensor([128.0847, 128.0847, 128.0847])/255
         #test_std = torch.tensor([74.5220, 74.5220, 74.5220])/255
 
+        # NOTE: Hardcoded paths - update to match your CheXpert dataset location
         data_labels_path = '/home/fkirchhofer/data/CheXpert-v1.0/test.csv'
         data_img_path = '/home/fkirchhofer/data/CheXpert-v1.0'
 
@@ -225,31 +261,59 @@ def prepare_data(model_args):
 
 # Run the model
 def model_run(model, data_loader):
+    """
+    Run model inference on a DataLoader and collect all logits.
 
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Model in eval mode, already on DEVICE.
+    data_loader : torch.utils.data.DataLoader
+        DataLoader yielding (images, labels) batches.
+
+    Returns
+    -------
+    torch.Tensor
+        Concatenated logits of shape (N_samples, num_classes).
+    """
     model.to(DEVICE)
     model.eval()
-
     print("Running model in standard multi-label mode...\n")
     all_logits = []
-
     with torch.no_grad():
         for images, labels in data_loader:
             images, labels = images.to(DEVICE, non_blocking=True), labels.to(DEVICE)
             logits = model(images)
             all_logits.append(logits.cpu())
-
     # Concatenate batch results from list into one torch tensor
     all_logits = torch.cat(all_logits, dim=0)
-
     return all_logits
 
 
 def eval_model(model_args, data_loader, tasks, logits, only_max_prob_view:bool=True):
     """
-    TODO: define args and returns
     Evaluate the model's performance using logits and ground truth from data_loader.
     Computes accuracy, AUROC, optionally plots ROC curves, and performs threshold tuning.
 
+    Parameters
+    ----------
+    model_args : argparse.Namespace
+        Arguments controlling evaluation behavior (tune_thresholds, plot_roc, etc.)
+    data_loader : torch.utils.data.DataLoader
+        DataLoader for ground truth labels
+    tasks : list[str]
+        List of class/task names (14 CheXpert classes)
+    logits : torch.Tensor
+        Raw model logits of shape (N_samples, num_classes)
+    only_max_prob_view : bool, default=True
+        If True, aggregate predictions per patient by taking max probability across views
+
+    Side Effects
+    ------------
+    - Prints evaluation metrics to console
+    - Saves threshold CSV files if tune_thresholds=True
+    - Saves evaluation results CSV to singel_model_evaluation/
+    - Optionally plots ROC curves (if flag plot_roc=True)
     """
 
     # Gather ground truth labels from data_loader size(n_images, tasks)
@@ -582,6 +646,8 @@ def main():
     eval_model(model_args=model_args, data_loader=data_loader, tasks=tasks, logits=logits)
 
     if model_args.run_test:
+        # NOTE: Hardcoded threshold paths - update to match your results directory
+        # These paths point to pre-computed thresholds from validation set tuning
         #debug_densenet_threshold_path = '/home/fkirchhofer/repo/xai_thesis/third_party/results/DenseNet121_tuned_f1_thresholds.csv'
         debug_resnet_threshold_path = '/home/fkirchhofer/repo/xai_thesis/third_party/results/ResNet152_tuned_f1_thresholds.csv'
         #debug_inception_threshold_path = ''

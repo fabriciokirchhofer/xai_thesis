@@ -57,6 +57,8 @@ def main():
     start = datetime.datetime.now(local_time_zone)
 
     parent_parser = run_models.create_parser()
+    # NOTE: Hardcoded default path - update to match your environment
+    # The --config argument can be overridden via command line
     parent_parser.add_argument('--config', type=str,
         default='/home/fkirchhofer/repo/xai_thesis/config.json', # TODO: For some reason I can not pass it in the terminal. It seems unrecognized. Why?
         help='Path to JSON config file')    

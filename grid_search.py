@@ -1,3 +1,25 @@
+"""
+Grid Search for Ensemble Hyperparameters
+
+This script performs a grid search over hyperparameters (a, b) that control
+weight sharpening and global scaling in distinctiveness-based ensemble strategies.
+
+The grid search evaluates mean F1 score across evaluation tasks for different
+combinations of (a, b) parameters, where:
+- a: Global scaling factor for weights
+- b: Exponent for weight sharpening (higher b = more emphasis on high distinctiveness)
+
+The script loads model predictions, distinctiveness values, and performs
+threshold tuning if configured, then searches over a grid of (a, b) values
+to find the optimal combination.
+
+Note: This is a standalone script. For production use, grid search is
+integrated into run_experiments.py via config.json settings.
+
+Usage:
+    python grid_search.py
+    (Ensure config.json is in the current directory)
+"""
 import json
 import numpy as np
 import torch
@@ -5,6 +27,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # 1. Load configuration and prepare data
+# NOTE: Hardcoded path - update to match your environment
 with open('config.json', 'r') as f:
     config = json.load(f)
 ensemble_cfg = config['ensemble']
@@ -102,6 +125,10 @@ else:
 #************************* Till here nothing new
 
 # 4. Grid search over a and b
+# Parameter ranges: a and b control weight adjustment
+# a: global scaling (0.01 to 5.0, step 0.01) - scales all weights uniformly
+# b: sharpening exponent (0.01 to 5.0, step 0.01) - higher values emphasize high distinctiveness
+# Note: This creates a 500x500 grid (25,000 combinations) - computationally expensive
 a_values = np.arange(0.01, 5.01, 0.01)
 b_values = np.arange(0.01, 5.01, 0.01)
 mean_f1_grid = np.zeros((len(a_values), len(b_values)), dtype=np.float32)
@@ -115,6 +142,10 @@ for ia, a in enumerate(a_values):
     # To improve efficiency, compute weight_matrix^b once per b in the inner loop
     for ib, b in enumerate(b_values):
         # Compute adjusted weights: a * (base_weight_matrix ** b)
+        # Formula: W_ab = a * (W_base ^ b)
+        # - If b=1: linear scaling by a
+        # - If b>1: amplifies high distinctiveness values (sharpening)
+        # - If b<1: flattens differences (smoothing)
         W_ab = a * (weight_matrix ** b)  # shape: (M, C)
         # Combine model predictions with these weights
         # If pre-thresholded, model_binary_preds contains 0/1; if post, contains probabilities

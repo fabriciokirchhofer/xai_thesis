@@ -1,3 +1,20 @@
+"""
+Utility Functions for XAI-based Ensemble Evaluation
+
+This module provides core functionality for:
+- XAI attribution methods (GradCAM, LRP, DeepLift, Integrated Gradients)
+- Distinctiveness calculation based on saliency map similarity
+- Evaluation metrics (AUROC, F1, Youden index, accuracy)
+- Patient-level aggregation (max probability per view)
+- Config file parsing and placeholder expansion
+- Visualization utilities (ROC curves, heatmaps, distinctiveness plots)
+
+Key Functions:
+- XAI Methods: generate_gradcam_heatmap, generate_lrp_attribution, deep_lift_layer_heatmap
+- Distinctiveness: class_distinctiveness, per_class_distinctiveness, compute_distinctiveness
+- Metrics: auroc, compute_f1_score, comput_youden_idx, compute_accuracy
+- Aggregation: get_max_prob_per_view (patient-level max per study view)
+"""
 import numpy as np
 import torch
 import os
@@ -17,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 # Try to access GPU via config file or default (device:0) otherwise will go to CPU
+# NOTE: Hardcoded path - update to match your environment
 try:
     with open("/home/fkirchhofer/repo/xai_thesis/config.json", "r") as f:
         config = json.load(f)
@@ -275,7 +293,30 @@ def ig_heatmap(model:torch.nn.Module,
                 target_class:int,
                 target_layer:torch.nn.Module,
                 baseline:torch.Tensor) -> np.ndarray:
-
+    """
+    Generate Integrated Gradients (IG) attribution heatmap.
+    
+    IG attributes the prediction to input features by integrating gradients
+    along a path from a baseline (typically zeros) to the input.
+    
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Trained model in eval mode
+    input_tensor : torch.Tensor
+        Input image tensor of shape [1, C, H, W]
+    target_class : int
+        Class index for which to compute attribution
+    target_layer : torch.nn.Module
+        Layer to attribute to (typically input layer for IG)
+    baseline : torch.Tensor
+        Baseline input (typically zeros). If None, uses zeros.
+        
+    Returns
+    -------
+    np.ndarray
+        2D heatmap showing feature importance
+    """
     if baseline is None:
         baseline = torch.zeros_like(input_tensor)
 
@@ -297,7 +338,30 @@ def deep_lift_layer_heatmap(model,
                             input_tensor,
                             target_class,
                             baseline=None):
-
+    """
+    Generate DeepLift attribution heatmap for a specific layer.
+    
+    DeepLift attributes predictions by comparing activations to a baseline,
+    propagating relevance through the network using the DeepLift rules.
+    
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Trained model in eval mode
+    layer : torch.nn.Module
+        Target layer to compute attributions for
+    input_tensor : torch.Tensor
+        Input image tensor of shape [1, C, H, W]
+    target_class : int
+        Class index for which to compute attribution
+    baseline : torch.Tensor, optional
+        Baseline input (typically zeros). If None, uses zeros.
+        
+    Returns
+    -------
+    np.ndarray
+        2D heatmap showing feature importance at the specified layer
+    """
     if baseline is None:
         baseline = torch.zeros_like(input_tensor)
 
@@ -738,6 +802,32 @@ def compute_accuracy(predictions, labels):
     return accuracy.item()
 
 def get_max_prob_per_view(probs, gt_labels, tasks: list = None, args=None):
+    """
+    Aggregate predictions to patient-level by taking maximum probability per study view.
+    
+    In CheXpert, a patient study can have multiple views (e.g., AP, PA, lateral).
+    This function groups predictions by study_id and takes the maximum probability
+    across all views for each class, which is the standard evaluation approach.
+    
+    Parameters
+    ----------
+    probs : np.ndarray or torch.Tensor
+        Predictions of shape (N_samples, num_classes) where N_samples may include
+        multiple views per patient
+    gt_labels : np.ndarray or torch.Tensor
+        Ground truth labels of shape (N_samples, num_classes)
+    tasks : list[str]
+        List of class names (must match columns)
+    args : argparse.Namespace
+        Must have run_test attribute to determine which CSV to load for study_id mapping
+        
+    Returns
+    -------
+    prob_arr : np.ndarray
+        Aggregated probabilities of shape (N_patients, num_classes)
+    gt_arr : np.ndarray
+        Aggregated ground truth of shape (N_patients, num_classes)
+    """
     # 1) bring inputs into plain numpy floats
     if isinstance(probs, torch.Tensor):
         probs = probs.detach().cpu().numpy()
