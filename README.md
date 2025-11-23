@@ -124,5 +124,5 @@ Results are saved in timestamped directories containing:
 ## Notes
 
 - Hardcoded paths: Some scripts contain hardcoded paths (e.g., `/home/fkirchhofer/`). Update these to match your system.
-- GPU device: Configured via `config.json` `device` field (default: `cuda:2`). Corresponds on NERVE to 
+- GPU device: Configured via `config.json` `device` field (default: `cuda:2`).
 - Data paths: CheXpert dataset expected at paths specified in `third_party/run_models.py`
