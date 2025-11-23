@@ -46,6 +46,27 @@ xai_thesis/
 └── AAA_evaluation_scripts/ # Analysis and visualization scripts
 ```
 
+## Git Repository
+
+### Ignored Files and Directories
+
+The following are excluded from version control (see `.gitignore`):
+
+- **Experimental outputs**: `A_experiments_*/`, `A_experiments_FINAL_01/`, `ensemble_*/`, `distinctiveness_*/`, `heatmap_cache_*/`, `saliency_maps_*/`
+- **Archive**: `zz_archive/` (old snapshots and archived experiments)
+- **Model checkpoints**: `*.ckpt`, `*.pth` (place pretrained models in `third_party/pretrainedmodels/`)
+- **Data files**: `*.png`, `*.jpg`, `*.jpeg`, `*.npz`
+- **Cache and temporary files**: `__pycache__/`, `*.pyc`, `*.db`, `*.log`, `*.txt`
+- **Docker files**: `Dockerfile`, `.dockerignore`, `docker-compose*.yml`
+- **Environment files**: `.env`, `.venv`, `env/`, `venv/`
+- **IDE files**: `.vscode/`, `.idea/`, `*.sublime-*`
+- **Jupyter notebooks**: `*.ipynb`, `.ipynb_checkpoints/`
+
+**Note**: When cloning the repository, you'll need to:
+1. Set up the conda environment (see Installation)
+2. Download and place pretrained model checkpoints according to paths in `config.json`
+3. Update paths in `config.json` to match your system
+
 ## Usage
 
 ### Main Ensemble Evaluation
@@ -123,6 +144,8 @@ Results are saved in timestamped directories containing:
 
 ## Notes
 
-- Hardcoded paths: Some scripts contain hardcoded paths (e.g., `/home/fkirchhofer/`). Update these to match your system.
-- GPU device: Configured via `config.json` `device` field (default: `cuda:2`).
-- Data paths: CheXpert dataset expected at paths specified in `third_party/run_models.py`
+- **Hardcoded paths**: Some scripts contain hardcoded paths (e.g., `/home/fkirchhofer/`). Update these to match your system.
+- **GPU device**: Configured via `config.json` `device` field (default: `cuda:2`).
+- **Data paths**: CheXpert dataset expected at paths specified in `third_party/run_models.py`
+- **Model checkpoints**: Pretrained model files are not included in the repository. Download them separately and place them according to the paths specified in `config.json`
+- **Output directories**: Experiment results are saved to timestamped directories and are excluded from git. Check `.gitignore` for the full list of ignored patterns.

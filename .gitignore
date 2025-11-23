@@ -21,6 +21,7 @@ distinctiveness_*/
 heatmap_cache_*/
 saliency_maps_*/
 A_experiments_*/
+A_experiments_FINAL_01/
 results/
 singel_model_evaluation/
 
@@ -41,8 +42,8 @@ logs/
 *.bak
 *~
 
-# Archive (uncomment if not needed for submission)
-# zz_archive/
+# Archive
+zz_archive/
 
 # IDE
 .vscode/
@@ -58,3 +59,14 @@ logs/
 .venv
 env/
 venv/
+
+# Docker files
+Dockerfile
+Dockerfile.*
+.dockerignore
+docker-compose*.yml
+docker-compose*.yaml
+
+# Accidental files
+Usersfabri
+UsersfabriDesktop
